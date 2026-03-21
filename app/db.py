@@ -28,6 +28,27 @@ async def init_db():
             """)
 
             await cur.execute("""
+                CREATE TABLE IF NOT EXISTS lead_events (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    event_name TEXT NOT NULL,
+                    event_value TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_questions (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    question_text TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'new',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            await cur.execute("""
                 CREATE TABLE IF NOT EXISTS user_profiles (
                     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
                     track TEXT,
@@ -46,16 +67,6 @@ async def init_db():
                     intent_score INTEGER DEFAULT 0,
                     status TEXT DEFAULT 'new',
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS lead_events (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    event_name TEXT NOT NULL,
-                    event_value TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
 
@@ -88,6 +99,54 @@ async def upsert_user(
 
         await conn.commit()
         return row["id"]
+    finally:
+        await conn.close()
+
+
+async def add_event(user_id: int, event_name: str, event_value: str | None = None):
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                INSERT INTO lead_events (user_id, event_name, event_value)
+                VALUES (%s, %s, %s);
+            """, (user_id, event_name, event_value))
+
+        await conn.commit()
+    finally:
+        await conn.close()
+
+
+async def create_user_question(user_id: int, question_text: str) -> int:
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                INSERT INTO user_questions (user_id, question_text)
+                VALUES (%s, %s)
+                RETURNING id;
+            """, (user_id, question_text))
+
+            row = await cur.fetchone()
+
+        await conn.commit()
+        return row["id"]
+    finally:
+        await conn.close()
+
+
+async def update_question_status(question_id: int, status: str):
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                UPDATE user_questions
+                SET status = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+            """, (status, question_id))
+
+        await conn.commit()
     finally:
         await conn.close()
 
@@ -129,20 +188,6 @@ async def save_scores(user_id: int, fit_score: int, intent_score: int, status: s
                     status = EXCLUDED.status,
                     updated_at = CURRENT_TIMESTAMP;
             """, (user_id, fit_score, intent_score, status))
-
-        await conn.commit()
-    finally:
-        await conn.close()
-
-
-async def add_event(user_id: int, event_name: str, event_value: str | None = None):
-    conn = await get_connection()
-    try:
-        async with conn.cursor() as cur:
-            await cur.execute("""
-                INSERT INTO lead_events (user_id, event_name, event_value)
-                VALUES (%s, %s, %s);
-            """, (user_id, event_name, event_value))
 
         await conn.commit()
     finally:

@@ -1,19 +1,77 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 
-def track_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Продать 100% бизнеса", callback_data="track:t1")],
-        [InlineKeyboardButton(text="Остаться управляющим партнёром", callback_data="track:t2")],
-        [InlineKeyboardButton(text="Сравнить оба варианта", callback_data="track:compare")],
-    ])
+def main_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text="Хочу продать бизнес / сотрудничать",
+                callback_data="menu:sell"
+            )],
+            [InlineKeyboardButton(
+                text="Сравнить варианты",
+                callback_data="menu:compare"
+            )],
+            [InlineKeyboardButton(
+                text="Хочу задать вопрос",
+                callback_data="menu:ask"
+            )],
+            [InlineKeyboardButton(
+                text="Организовать созвон",
+                callback_data="menu:call"
+            )],
+            [InlineKeyboardButton(
+                text="Скрыть меню",
+                callback_data="menu:hide"
+            )],
+        ]
+    )
 
 
-def compare_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Выбрать T1", callback_data="track:t1")],
-        [InlineKeyboardButton(text="Выбрать T2", callback_data="track:t2")],
-    ])
+def sell_submenu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text="Продать весь бизнес",
+                callback_data="track:t1"
+            )],
+            [InlineKeyboardButton(
+                text="Продать часть бизнеса / сотрудничать",
+                callback_data="track:t2"
+            )],
+        ]
+    )
+
+
+def question_feedback_keyboard(question_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text="Да, ответили",
+                callback_data=f"question_feedback:yes:{question_id}"
+            )],
+            [InlineKeyboardButton(
+                text="Нет, не до конца",
+                callback_data=f"question_feedback:no:{question_id}"
+            )],
+        ]
+    )
+
+
+def persistent_menu_reply_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Меню")]
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Нажмите «Меню»"
+    )
 
 
 def role_keyboard() -> InlineKeyboardMarkup:
