@@ -56,7 +56,7 @@ def build_result_text(track: str, fit_score: int, intent_score: int, status: str
 
     track_map = {
         "t1": "Продажа 100% бизнеса",
-        "t2": "Управляющий партнёр",
+        "t2": "Продажа части бизнеса / сотрудничество",
     }
 
     return (

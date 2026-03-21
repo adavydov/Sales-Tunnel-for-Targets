@@ -6,11 +6,13 @@ from aiogram import Bot, Dispatcher
 from app.config import BOT_TOKEN
 from app.db import init_db
 from app.handlers.start import router as start_router
+from app.materials import ensure_material_files
 
 
 async def main():
     logging.basicConfig(level=logging.INFO)
 
+    ensure_material_files()
     await init_db()
 
     bot = Bot(token=BOT_TOKEN)

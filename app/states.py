@@ -1,8 +1,11 @@
 from aiogram.fsm.state import State, StatesGroup
 
 
+class BotFlow(StatesGroup):
+    awaiting_question = State()
+
+
 class LeadFlow(StatesGroup):
-    choosing_track = State()
     role = State()
     business_size = State()
     timeframe = State()
