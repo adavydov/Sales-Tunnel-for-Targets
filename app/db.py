@@ -4,6 +4,19 @@ from psycopg.rows import dict_row
 from app.config import DATABASE_URL
 
 
+ALLOWED_TRACKS = {"t1", "t2"}
+ALLOWED_ROLES = {"owner", "partner", "ceo", "ops"}
+ALLOWED_BUSINESS_SIZES = {"large", "medium", "small"}
+ALLOWED_TIMEFRAMES = {"now", "3_6", "6_12", "later"}
+ALLOWED_MOTIVATIONS = {
+    "exit", "liquidity", "burnout", "risk",
+    "growth", "partner", "control", "scale",
+}
+ALLOWED_STATUSES = {"new", "not_fit", "nurture", "ready_t1", "ready_t2"}
+ALLOWED_CONTACT_TYPES = {"email", "telegram", "phone"}
+
+
+
 WARMUP_SEED_MESSAGES = [
     {
         "slug": "case_founder_exit",
@@ -110,7 +123,8 @@ async def init_db():
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     question_text TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'new',
+                    status TEXT NOT NULL DEFAULT 'new'
+                        CHECK (status IN ('new', 'resolved', 'not_resolved')),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -119,11 +133,13 @@ async def init_db():
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS user_profiles (
                     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                    track TEXT,
-                    role TEXT,
-                    business_size TEXT,
-                    timeframe TEXT,
-                    motivation TEXT,
+                    track TEXT CHECK (track IN ('t1', 't2')),
+                    role TEXT CHECK (role IN ('owner', 'partner', 'ceo', 'ops')),
+                    business_size TEXT CHECK (business_size IN ('large', 'medium', 'small')),
+                    timeframe TEXT CHECK (timeframe IN ('now', '3_6', '6_12', 'later')),
+                    motivation TEXT CHECK (
+                        motivation IN ('exit', 'liquidity', 'burnout', 'risk', 'growth', 'partner', 'control', 'scale')
+                    ),
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -133,7 +149,8 @@ async def init_db():
                     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
                     fit_score INTEGER DEFAULT 0,
                     intent_score INTEGER DEFAULT 0,
-                    status TEXT DEFAULT 'new',
+                    status TEXT DEFAULT 'new'
+                        CHECK (status IN ('new', 'not_fit', 'nurture', 'ready_t1', 'ready_t2')),
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -142,7 +159,8 @@ async def init_db():
                 CREATE TABLE IF NOT EXISTS lead_contacts (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    contact_type TEXT NOT NULL,
+                    contact_type TEXT NOT NULL
+                        CHECK (contact_type IN ('email', 'telegram', 'phone')),
                     contact_value TEXT NOT NULL,
                     consent_accepted BOOLEAN NOT NULL DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -170,6 +188,22 @@ async def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_lead_events_user_created
+                ON lead_events (user_id, created_at DESC);
+            """)
+
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_questions_user_status
+                ON user_questions (user_id, status);
+            """)
+
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_warmup_delivery_user_created
+                ON warmup_delivery_logs (user_id, created_at DESC);
+            """)
+
 
         await seed_warmup_messages(conn)
         await conn.commit()
@@ -257,6 +291,16 @@ async def save_profile_field(user_id: int, field_name: str, value: str):
     allowed_fields = {"track", "role", "business_size", "timeframe", "motivation"}
     if field_name not in allowed_fields:
         raise ValueError(f"Недопустимое поле профиля: {field_name}")
+    if field_name == "track" and value not in ALLOWED_TRACKS:
+        raise ValueError(f"Недопустимое значение track: {value}")
+    if field_name == "role" and value not in ALLOWED_ROLES:
+        raise ValueError(f"Недопустимое значение role: {value}")
+    if field_name == "business_size" and value not in ALLOWED_BUSINESS_SIZES:
+        raise ValueError(f"Недопустимое значение business_size: {value}")
+    if field_name == "timeframe" and value not in ALLOWED_TIMEFRAMES:
+        raise ValueError(f"Недопустимое значение timeframe: {value}")
+    if field_name == "motivation" and value not in ALLOWED_MOTIVATIONS:
+        raise ValueError(f"Недопустимое значение motivation: {value}")
 
     conn = await get_connection()
     try:
@@ -278,6 +322,9 @@ async def save_profile_field(user_id: int, field_name: str, value: str):
 
 
 async def save_scores(user_id: int, fit_score: int, intent_score: int, status: str):
+    if status not in ALLOWED_STATUSES:
+        raise ValueError(f"Недопустимый статус: {status}")
+
     conn = await get_connection()
     try:
         async with conn.cursor() as cur:
@@ -297,6 +344,9 @@ async def save_scores(user_id: int, fit_score: int, intent_score: int, status: s
 
 
 async def upsert_contact(user_id: int, contact_type: str, contact_value: str):
+    if contact_type not in ALLOWED_CONTACT_TYPES:
+        raise ValueError(f"Недопустимый тип контакта: {contact_type}")
+
     conn = await get_connection()
     try:
         async with conn.cursor() as cur:
