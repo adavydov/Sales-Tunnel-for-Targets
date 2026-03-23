@@ -10,19 +10,23 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text="Хочу продать бизнес / сотрудничать",
+                text="Оценить бизнес",
                 callback_data="menu:sell"
             )],
+            # [InlineKeyboardButton(
+            #     text="Сравнить варианты",
+            #     callback_data="menu:compare"
+            # )],
+            # [InlineKeyboardButton(
+            #     text="Хочу задать вопрос",
+            #     callback_data="menu:ask"
+            # )],
             [InlineKeyboardButton(
-                text="Сравнить варианты",
-                callback_data="menu:compare"
+                text="Материалы для ознакомления", 
+                callback_data="menu:materials"
             )],
             [InlineKeyboardButton(
-                text="Хочу задать вопрос",
-                callback_data="menu:ask"
-            )],
-            [InlineKeyboardButton(
-                text="Организовать созвон",
+                text="Связаться с нами",
                 callback_data="menu:call"
             )],
             [InlineKeyboardButton(
@@ -120,5 +124,71 @@ def motivation_keyboard(track: str) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text=text, callback_data=callback)]
             for text, callback in items
+        ]
+    )
+
+
+def final_status_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text="Оставить свои контакты",
+                callback_data="contact:start"
+            )]
+        ]
+    )
+
+
+def contact_consent_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text="Принимаю",
+                callback_data="contact:accept"
+            )]
+        ]
+    )
+
+
+def contact_type_keyboard(available_types: list[str]) -> InlineKeyboardMarkup:
+    labels = {
+        "email": "Email",
+        "telegram": "Telegram",
+        "phone": "Телефон",
+    }
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text=labels[contact_type],
+                callback_data=f"contact_type:{contact_type}"
+            )]
+            for contact_type in available_types
+        ]
+    )
+
+
+def warmup_interest_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text="Заинтересовался",
+                callback_data="warmup:interested"
+            )]
+        ]
+    )
+
+
+def after_contact_saved_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text="Оставить еще один способ связи",
+                callback_data="contact:add_more"
+            )],
+            [InlineKeyboardButton(
+                text="Ошибся при вводе данных",
+                callback_data="contact:edit"
+            )],
         ]
     )
