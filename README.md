@@ -30,21 +30,21 @@ Sales-Tunnel-for-Targets/
 └── app/
 
     ├── __init__.py
-    
+
     ├── config.py
-    
+
     ├── db.py
-    
+
     ├── keyboards.py
-    
+
     ├── materials.py
-    
+
     ├── scoring.py
-    
+
     ├── states.py
-    
+
     └── handlers/
-    
+
         ├── __init__.py
         
         └── start.py
@@ -65,13 +65,13 @@ python3 -m pip install aiogram python-dotenv "psycopg[binary]" APScheduler
 
 4. Создать .env файл:
 BOT_TOKEN=<ваш_токен_бота>
-DATABASE_URL=postgresql://bot_user:123456@localhost:5432/sales_tunnel_for_targets_bot_db
+DATABASE_URL=postgresql://bot_user:<сложный_пароль>@localhost:5432/sales_tunnel_for_targets_bot_db
 
 ## Настройка PostgreSQL
 
 - Локальный PostgreSQL (Homebrew или Postgres.app)
 - Создать пользователя и базу:
-CREATE USER bot_user WITH PASSWORD '123456';
+CREATE USER bot_user WITH PASSWORD '<сложный_пароль>';
 CREATE DATABASE sales_tunnel_for_targets_bot_db OWNER bot_user;
 
 - Таблицы создаются автоматически при запуске бота через init_db()
@@ -81,9 +81,9 @@ CREATE DATABASE sales_tunnel_for_targets_bot_db OWNER bot_user;
 source .venv/bin/activate
 python3 main.py
 
-## Материалы
+##Материалы
 
-- 5 локальных файлов/видео находятся в app/materials/
+- 5 локальных файлов/видео находятся в materials/
 - При нажатии Почитать материалы бот отправляет их пользователю
 
 ## Контактный flow

@@ -1,4 +1,5 @@
 import re
+import logging
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart, StateFilter
@@ -34,6 +35,7 @@ from app.scoring import build_result_screen, calculate_scores
 from app.states import BotFlow, ContactFlow, LeadFlow
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 TG_RE = re.compile(r"^@?[A-Za-z0-9_]{5,32}$")
@@ -112,8 +114,8 @@ CONTACT_INFO = "Связаться с нами можно по следующи�
 async def safe_delete(message: Message):
     try:
         await message.delete()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Не удалось удалить сообщение: %s", exc)
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -307,8 +309,8 @@ async def handle_question_feedback(callback: CallbackQuery, state: FSMContext):
 
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Не удалось очистить inline-клавиатуру: %s", exc)
 
     if action == "yes":
         await update_question_status(question_id, "resolved")
@@ -597,8 +599,8 @@ async def add_more_contact(callback: CallbackQuery, state: FSMContext):
 
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Не удалось очистить inline-клавиатуру: %s", exc)
 
     if not missing_types:
         await callback.message.answer(
@@ -634,8 +636,8 @@ async def edit_contact(callback: CallbackQuery, state: FSMContext):
 
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Не удалось очистить inline-клавиатуру: %s", exc)
 
     if not filled_types:
         await callback.message.answer("Сначала оставьте хотя бы один способ связи.")
