@@ -7,6 +7,7 @@ from app.config import BOT_TOKEN
 from app.db import init_db
 from app.handlers.start import router as start_router
 from app.materials import ensure_material_files
+# from app.warmup import setup_scheduler
 
 
 async def main():
@@ -20,8 +21,12 @@ async def main():
 
     dp.include_router(start_router)
 
+    # scheduler = setup_scheduler(bot)
+
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
+    # finally:
+        # scheduler.shutdown()
 
 
 if __name__ == "__main__":
