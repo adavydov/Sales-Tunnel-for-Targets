@@ -14,6 +14,24 @@ ALLOWED_MOTIVATIONS = {
 }
 ALLOWED_STATUSES = {"new", "not_fit", "nurture", "ready_t1", "ready_t2"}
 ALLOWED_CONTACT_TYPES = {"email", "telegram", "phone"}
+CONTACT_COLUMN_BY_TYPE = {
+    "email": "contact_email",
+    "telegram": "contact_telegram",
+    "phone": "contact_phone",
+}
+ALLOWED_PROFILE_FIELDS = {
+    "track",
+    "role",
+    "business_size",
+    "timeframe",
+    "motivation",
+    "company",
+    "contact_name",
+    "contact_phone",
+    "contact_email",
+    "contact_position",
+    "onboarding_consent",
+}
 
 
 
@@ -96,6 +114,14 @@ async def init_db():
     conn = await get_connection()
     try:
         async with conn.cursor() as cur:
+            # Legacy tables are no longer used after schema simplification.
+            await cur.execute("""
+                DROP TABLE IF EXISTS lead_contacts;
+            """)
+            await cur.execute("""
+                DROP TABLE IF EXISTS user_profiles;
+            """)
+
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
@@ -103,10 +129,53 @@ async def init_db():
                     username TEXT,
                     first_name TEXT,
                     last_name TEXT,
+                    track TEXT CHECK (track IN ('t1', 't2')),
+                    role TEXT CHECK (role IN ('owner', 'partner', 'ceo', 'ops')),
+                    business_size TEXT CHECK (business_size IN ('large', 'medium', 'small')),
+                    timeframe TEXT CHECK (timeframe IN ('now', '3_6', '6_12', 'later')),
+                    motivation TEXT CHECK (
+                        motivation IN ('exit', 'liquidity', 'burnout', 'risk', 'growth', 'partner', 'control', 'scale')
+                    ),
+                    company TEXT,
+                    contact_name TEXT,
+                    contact_phone TEXT,
+                    contact_email TEXT,
+                    contact_position TEXT,
+                    onboarding_consent TEXT,
+                    contact_telegram TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+
+            await cur.execute("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS track TEXT CHECK (track IN ('t1', 't2'));
+            """)
+            await cur.execute("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT CHECK (role IN ('owner', 'partner', 'ceo', 'ops'));
+            """)
+            await cur.execute("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS business_size TEXT CHECK (business_size IN ('large', 'medium', 'small'));
+            """)
+            await cur.execute("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS timeframe TEXT CHECK (timeframe IN ('now', '3_6', '6_12', 'later'));
+            """)
+            await cur.execute("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS motivation TEXT CHECK (
+                    motivation IN ('exit', 'liquidity', 'burnout', 'risk', 'growth', 'partner', 'control', 'scale')
+                );
+            """)
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS company TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_name TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_phone TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_email TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_position TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_consent TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_telegram TEXT;""")
+
+            await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_email;""")
+            await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_telegram;""")
+            await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_phone;""")
 
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS lead_events (
@@ -131,20 +200,6 @@ async def init_db():
             """)
 
             await cur.execute("""
-                CREATE TABLE IF NOT EXISTS user_profiles (
-                    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                    track TEXT CHECK (track IN ('t1', 't2')),
-                    role TEXT CHECK (role IN ('owner', 'partner', 'ceo', 'ops')),
-                    business_size TEXT CHECK (business_size IN ('large', 'medium', 'small')),
-                    timeframe TEXT CHECK (timeframe IN ('now', '3_6', '6_12', 'later')),
-                    motivation TEXT CHECK (
-                        motivation IN ('exit', 'liquidity', 'burnout', 'risk', 'growth', 'partner', 'control', 'scale')
-                    ),
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-
-            await cur.execute("""
                 CREATE TABLE IF NOT EXISTS user_scores (
                     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
                     fit_score INTEGER DEFAULT 0,
@@ -152,20 +207,6 @@ async def init_db():
                     status TEXT DEFAULT 'new'
                         CHECK (status IN ('new', 'not_fit', 'nurture', 'ready_t1', 'ready_t2')),
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS lead_contacts (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    contact_type TEXT NOT NULL
-                        CHECK (contact_type IN ('email', 'telegram', 'phone')),
-                    contact_value TEXT NOT NULL,
-                    consent_accepted BOOLEAN NOT NULL DEFAULT TRUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE (user_id, contact_type)
                 );
             """)
 
@@ -288,8 +329,7 @@ async def update_question_status(question_id: int, status: str):
 
 
 async def save_profile_field(user_id: int, field_name: str, value: str):
-    allowed_fields = {"track", "role", "business_size", "timeframe", "motivation"}
-    if field_name not in allowed_fields:
+    if field_name not in ALLOWED_PROFILE_FIELDS:
         raise ValueError(f"Недопустимое поле профиля: {field_name}")
     if field_name == "track" and value not in ALLOWED_TRACKS:
         raise ValueError(f"Недопустимое значение track: {value}")
@@ -307,13 +347,12 @@ async def save_profile_field(user_id: int, field_name: str, value: str):
         async with conn.cursor() as cur:
             await cur.execute(
                 f"""
-                INSERT INTO user_profiles (user_id, {field_name})
-                VALUES (%s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET
-                    {field_name} = EXCLUDED.{field_name},
-                    updated_at = CURRENT_TIMESTAMP;
+                UPDATE users
+                SET {field_name} = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
                 """,
-                (user_id, value),
+                (value, user_id),
             )
 
         await conn.commit()
@@ -347,17 +386,20 @@ async def upsert_contact(user_id: int, contact_type: str, contact_value: str):
     if contact_type not in ALLOWED_CONTACT_TYPES:
         raise ValueError(f"Недопустимый тип контакта: {contact_type}")
 
+    column_name = CONTACT_COLUMN_BY_TYPE[contact_type]
+
     conn = await get_connection()
     try:
         async with conn.cursor() as cur:
-            await cur.execute("""
-                INSERT INTO lead_contacts (user_id, contact_type, contact_value, consent_accepted)
-                VALUES (%s, %s, %s, TRUE)
-                ON CONFLICT (user_id, contact_type) DO UPDATE SET
-                    contact_value = EXCLUDED.contact_value,
-                    consent_accepted = TRUE,
-                    updated_at = CURRENT_TIMESTAMP;
-            """, (user_id, contact_type, contact_value))
+            await cur.execute(
+                f"""
+                UPDATE users
+                SET {column_name} = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s;
+                """,
+                (contact_value, user_id),
+            )
 
         await conn.commit()
     finally:
@@ -414,11 +456,23 @@ async def get_filled_contact_types(user_id: int) -> list[str]:
     try:
         async with conn.cursor() as cur:
             await cur.execute("""
-                SELECT contact_type
-                FROM lead_contacts
-                WHERE user_id = %s;
+                SELECT contact_email, contact_telegram, contact_phone
+                FROM users
+                WHERE id = %s;
             """, (user_id,))
-            rows = await cur.fetchall()
-        return [row["contact_type"] for row in rows]
+            row = await cur.fetchone()
+
+        if not row:
+            return []
+
+        filled_types: list[str] = []
+        if row["contact_email"]:
+            filled_types.append("email")
+        if row["contact_telegram"]:
+            filled_types.append("telegram")
+        if row["contact_phone"]:
+            filled_types.append("phone")
+
+        return filled_types
     finally:
         await conn.close()

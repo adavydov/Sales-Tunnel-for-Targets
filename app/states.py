@@ -5,6 +5,17 @@ class BotFlow(StatesGroup):
     awaiting_question = State()
 
 
+class OnboardingFlow(StatesGroup):
+    company = State()
+    wants_extra = State()
+    contact_name = State()
+    contact_phone = State()
+    contact_email = State()
+    contact_position = State()
+    contact_position_custom = State()
+    waiting_consent = State()
+
+
 class LeadFlow(StatesGroup):
     role = State()
     business_size = State()

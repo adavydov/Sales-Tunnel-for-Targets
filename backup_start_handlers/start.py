@@ -17,26 +17,22 @@ from app.db import (
     get_filled_contact_types,
 )
 from app.keyboards import (
-    after_contact_saved_keyboard,
     business_size_keyboard,
     contact_consent_keyboard,
     contact_type_keyboard,
     final_status_keyboard,
     main_menu_keyboard,
     motivation_keyboard,
-    onboarding_consent_keyboard,
-    onboarding_contact_position_keyboard,
-    onboarding_extra_info_keyboard,
-    onboarding_learn_more_keyboard,
     persistent_menu_reply_keyboard,
     question_feedback_keyboard,
     role_keyboard,
     sell_submenu_keyboard,
     timeframe_keyboard,
+    after_contact_saved_keyboard,
 )
 from app.materials import MATERIAL_FILES, MATERIALS_DIR
 from app.scoring import build_result_screen, calculate_scores
-from app.states import BotFlow, ContactFlow, LeadFlow, OnboardingFlow
+from app.states import BotFlow, ContactFlow, LeadFlow
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -44,46 +40,12 @@ logger = logging.getLogger(__name__)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 TG_RE = re.compile(r"^@?[A-Za-z0-9_]{5,32}$")
 PHONE_RE = re.compile(r"^\+?[0-9()\-\s]{7,20}$")
-ONBOARDING_ROLE_LABELS = {
-    "owner": "Собственник",
-    "partner": "Партнёр",
-    "ceo": "CEO",
-    "ops": "Операционный руководитель",
-}
-ONBOARDING_POSITION_OPTIONS = list(ONBOARDING_ROLE_LABELS.values())
-ONBOARDING_OTHER_POSITION_LABEL = "Другая должность"
 
 MENU_TEXT = (
     "Здравствуйте!\n\n"
     "Это бот, в котором можно разобраться в вариантах продажи бизнеса "
     "или сотрудничества, а также задать вопрос по теме.\n\n"
     "Выберите, что вам сейчас актуально:"
-)
-
-ONBOARDING_WELCOME_TEXT = (
-    "Чтобы начать пользоваться ботом, пожалуйста, заполните базовую информацию о себе."
-)
-
-ONBOARDING_COMPANY_PROMPT = "Какая ваша компания?"
-
-ONBOARDING_EXTRA_PROMPT = (
-    "Желаете заполнить дополнительную информацию для более качественного опыта использования бота?"
-)
-
-ONBOARDING_CONSENT_TEXT = (
-    "Пожалуйста, ознакомьтесь и подтвердите согласие с условиями использования:\n\n"
-    "• Политика конфиденциальности персональных данных.\n"
-    "• Согласие на получение маркетинговых сообщений.\n"
-    "• Соглашение о неразглашении конфиденциальной информации со стороны AIVEL "
-    "относительно ввода конфиденциальных данных пользователя.\n\n"
-    "Нажмите кнопку «Принимаю», чтобы продолжить."
-)
-
-ONBOARDING_START_TEXT = (
-    "Добро пожаловать в AIvel!\n\n"
-    "Этот бот помогает оценить бизнес-кейс, смоделировать потенциальную экономию и "
-    "понять, как AI-инструменты могут усилить ваши продажи и операционные процессы.\n\n"
-    "Мы — AIVEL, команда, которая внедряет практичные AI-решения для роста бизнеса."
 )
 
 SELL_SUBMENU_TEXT = (
@@ -225,202 +187,12 @@ async def cmd_start(message: Message, state: FSMContext):
     user_id = await get_db_user_id(message)
     await add_event(user_id, "start")
     await state.clear()
-    await state.update_data(db_user_id=user_id)
-    await state.set_state(OnboardingFlow.company)
 
-    await message.answer(ONBOARDING_WELCOME_TEXT)
-    await message.answer(ONBOARDING_COMPANY_PROMPT, reply_markup=ReplyKeyboardRemove())
-
-
-@router.message(OnboardingFlow.company, F.text)
-async def onboarding_save_company(message: Message, state: FSMContext):
-    company = message.text.strip()
-
-    if not company:
-        await message.answer("Пожалуйста, укажите название компании текстом.")
-        return
-
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-
-    await save_profile_field(user_id, "company", company)
-    await add_event(user_id, "onboarding_company_saved", company)
-
-    await state.set_state(OnboardingFlow.wants_extra)
-    await message.answer(
-        ONBOARDING_EXTRA_PROMPT,
-        reply_markup=onboarding_extra_info_keyboard(),
+    await send_main_menu(
+        message=message,
+        user_id=user_id,
+        with_keyboard=True,
     )
-
-
-@router.message(OnboardingFlow.company)
-async def onboarding_company_non_text(message: Message):
-    await message.answer("Пожалуйста, отправьте название компании текстом.")
-
-
-@router.callback_query(OnboardingFlow.wants_extra, F.data == "onboarding:extra:yes")
-async def onboarding_extra_yes(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-
-    await add_event(user_id, "onboarding_extra_selected", "yes")
-    await state.set_state(OnboardingFlow.contact_name)
-    await safe_delete(callback.message)
-
-    await callback.message.answer("Укажите имя контактного лица.")
-    await callback.answer()
-
-
-@router.callback_query(OnboardingFlow.wants_extra, F.data == "onboarding:extra:no")
-async def onboarding_extra_no(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-
-    await add_event(user_id, "onboarding_extra_selected", "no")
-    await state.set_state(OnboardingFlow.waiting_consent)
-    await safe_delete(callback.message)
-
-    await callback.message.answer(
-        ONBOARDING_CONSENT_TEXT,
-        reply_markup=onboarding_consent_keyboard(),
-    )
-    await callback.answer()
-
-
-@router.message(OnboardingFlow.contact_name, F.text)
-async def onboarding_contact_name(message: Message, state: FSMContext):
-    contact_name = message.text.strip()
-    if not contact_name:
-        await message.answer("Пожалуйста, укажите имя контактного лица текстом.")
-        return
-
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-    await save_profile_field(user_id, "contact_name", contact_name)
-    await add_event(user_id, "onboarding_contact_name_saved")
-
-    await state.set_state(OnboardingFlow.contact_phone)
-    await message.answer("Укажите номер мобильного телефона контактного лица.")
-
-
-@router.message(OnboardingFlow.contact_phone, F.text)
-async def onboarding_contact_phone(message: Message, state: FSMContext):
-    contact_phone = message.text.strip()
-
-    if not PHONE_RE.match(contact_phone):
-        await message.answer("Телефон введен некорректно. Пример: +79991234567")
-        return
-
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-    await save_profile_field(user_id, "contact_phone", contact_phone)
-    await add_event(user_id, "onboarding_contact_phone_saved")
-
-    await state.set_state(OnboardingFlow.contact_email)
-    await message.answer("Укажите адрес электронной почты контактного лица.")
-
-
-@router.message(OnboardingFlow.contact_email, F.text)
-async def onboarding_contact_email(message: Message, state: FSMContext):
-    contact_email = message.text.strip().lower()
-
-    if not EMAIL_RE.match(contact_email):
-        await message.answer("Email введен некорректно. Пример: name@example.com")
-        return
-
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-    await save_profile_field(user_id, "contact_email", contact_email)
-    await add_event(user_id, "onboarding_contact_email_saved")
-
-    await state.set_state(OnboardingFlow.contact_position)
-    await message.answer(
-        "Укажите должность контактного лица.",
-        reply_markup=onboarding_contact_position_keyboard(),
-    )
-
-
-@router.message(OnboardingFlow.contact_position, F.text)
-async def onboarding_contact_position(message: Message, state: FSMContext):
-    selected_position = message.text.strip()
-
-    if selected_position == ONBOARDING_OTHER_POSITION_LABEL:
-        await state.set_state(OnboardingFlow.contact_position_custom)
-        await message.answer(
-            "Напишите должность контактного лица текстом.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return
-
-    if selected_position not in ONBOARDING_POSITION_OPTIONS:
-        await message.answer("Пожалуйста, выберите должность кнопкой ниже.")
-        return
-
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-    await save_profile_field(user_id, "contact_position", selected_position)
-    await add_event(user_id, "onboarding_contact_position_saved", selected_position)
-
-    await state.set_state(OnboardingFlow.waiting_consent)
-    await message.answer(
-        ONBOARDING_CONSENT_TEXT,
-        reply_markup=onboarding_consent_keyboard(),
-    )
-
-
-@router.message(OnboardingFlow.contact_position_custom, F.text)
-async def onboarding_contact_position_custom(message: Message, state: FSMContext):
-    contact_position = message.text.strip()
-
-    if not contact_position:
-        await message.answer("Пожалуйста, укажите должность контактного лица текстом.")
-        return
-
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-    await save_profile_field(user_id, "contact_position", contact_position)
-    await add_event(user_id, "onboarding_contact_position_saved")
-
-    await state.set_state(OnboardingFlow.waiting_consent)
-    await message.answer(
-        ONBOARDING_CONSENT_TEXT,
-        reply_markup=onboarding_consent_keyboard(),
-    )
-
-
-@router.message(OnboardingFlow.contact_name)
-@router.message(OnboardingFlow.contact_phone)
-@router.message(OnboardingFlow.contact_email)
-@router.message(OnboardingFlow.contact_position)
-@router.message(OnboardingFlow.contact_position_custom)
-async def onboarding_non_text(message: Message):
-    await message.answer("Пожалуйста, отправьте данные текстовым сообщением.")
-
-
-@router.callback_query(OnboardingFlow.waiting_consent, F.data == "onboarding:accept")
-async def onboarding_accept(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-
-    await save_profile_field(user_id, "onboarding_consent", "accepted")
-    await add_event(user_id, "onboarding_consent_accepted")
-    await state.clear()
-    await safe_delete(callback.message)
-
-    await callback.message.answer(
-        ONBOARDING_START_TEXT,
-        reply_markup=onboarding_learn_more_keyboard(),
-    )
-    await callback.message.answer(
-        "Основные действия доступны на клавиатуре ниже.",
-        reply_markup=persistent_menu_reply_keyboard(),
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "onboarding:learn_more")
-async def onboarding_learn_more(callback: CallbackQuery):
-    await callback.answer("Раздел Learn more скоро появится.")
 
 
 @router.message(StateFilter(None), Command("menu"))

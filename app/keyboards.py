@@ -13,14 +13,6 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
                 text="Оценить бизнес",
                 callback_data="menu:sell"
             )],
-            # [InlineKeyboardButton(
-            #     text="Сравнить варианты",
-            #     callback_data="menu:compare"
-            # )],
-            # [InlineKeyboardButton(
-            #     text="Хочу задать вопрос",
-            #     callback_data="menu:ask"
-            # )],
             [InlineKeyboardButton(
                 text="Материалы для ознакомления", 
                 callback_data="menu:materials"
@@ -70,11 +62,52 @@ def question_feedback_keyboard(question_id: int) -> InlineKeyboardMarkup:
 def persistent_menu_reply_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Меню")]
+            [KeyboardButton(text="Get AIvel")],
+            [KeyboardButton(text="Simulate Savings")],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Нажмите «Меню»"
+        input_field_placeholder="Choose an action"
+    )
+
+
+def onboarding_extra_info_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Да", callback_data="onboarding:extra:yes")],
+            [InlineKeyboardButton(text="Нет", callback_data="onboarding:extra:no")],
+        ]
+    )
+
+
+def onboarding_consent_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Принимаю", callback_data="onboarding:accept")],
+        ]
+    )
+
+
+def onboarding_learn_more_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Learn more", callback_data="onboarding:learn_more")],
+        ]
+    )
+
+
+def onboarding_contact_position_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Собственник")],
+            [KeyboardButton(text="Партнёр")],
+            [KeyboardButton(text="CEO")],
+            [KeyboardButton(text="Операционный руководитель")],
+            [KeyboardButton(text="Другая должность")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+        input_field_placeholder="Выберите должность"
     )
 
 
