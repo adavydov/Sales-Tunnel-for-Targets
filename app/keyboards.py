@@ -24,8 +24,6 @@ def menu_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="Book a meeting (corporate or accounting firm)", callback_data="stub:book_meeting")],
             [InlineKeyboardButton(text="Meet us at events", callback_data="stub:events")],
-            [InlineKeyboardButton(text="Simulate savings with AIVEL", callback_data="tool:simulate")],
-            [InlineKeyboardButton(text="Accounting firm Valuation Simulator", callback_data="tool:valuation")],
             [InlineKeyboardButton(text="Our products & services", callback_data="stub:products")],
             [InlineKeyboardButton(text="Videos & Case studies", callback_data="stub:videos")],
         ]

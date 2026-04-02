@@ -28,7 +28,8 @@ ONBOARDING_PROMO_TEXT = (
     "• использовать valuation-оценку для accounting firm;\n"
     "• находить кейсы, видео и полезные материалы.\n\n"
     "С этого момента вам доступен базовый функционал: каждый день в 14:00 будет приходить"
-    " прогрев с материалами, ссылками и обновлениями."
+    " прогрев с материалами, ссылками и обновлениями.\n\n"
+    "Сайт компании: https://aivel.ru"
 )
 
 TOOL_PLACEHOLDER_TEXT = (
@@ -44,7 +45,13 @@ CONSENT_TEXT = (
     "acceptance for receive marketing communication."
 )
 
-MENU_TEXT = "Выберите раздел (пока везде заглушки):"
+MENU_TEXT = "Вот какие у меня есть функции:"
+BOOK_MEETING_TEXT = (
+    "Для организации созвона напишите нам:\n\n"
+    "• Email: hello@aivel.ru\n"
+    "• Telegram: @aivel_ai\n"
+    "• Website: https://aivel.ru"
+)
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -226,7 +233,7 @@ async def consent_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.delete()
     await callback.message.answer(
-        "Возвращаю вас назад.",
+        "‎",
         reply_markup=persistent_main_keyboard(),
     )
     await callback.answer()
@@ -273,6 +280,12 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.delete()
     await callback.message.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "stub:book_meeting")
+async def book_meeting(callback: CallbackQuery):
+    await callback.message.answer(BOOK_MEETING_TEXT, disable_web_page_preview=True)
     await callback.answer()
 
 
