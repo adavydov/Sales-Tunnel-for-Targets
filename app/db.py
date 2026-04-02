@@ -20,17 +20,10 @@ CONTACT_COLUMN_BY_TYPE = {
     "phone": "contact_phone",
 }
 ALLOWED_PROFILE_FIELDS = {
-    "track",
-    "role",
-    "business_size",
-    "timeframe",
-    "motivation",
     "company",
-    "contact_name",
-    "contact_phone",
-    "contact_email",
-    "contact_position",
-    "onboarding_consent",
+    "company_website",
+    "simulate_consent",
+    "valuation_consent",
 }
 
 
@@ -143,6 +136,9 @@ async def init_db():
                     contact_position TEXT,
                     onboarding_consent TEXT,
                     contact_telegram TEXT,
+                    company_website TEXT,
+                    simulate_consent TEXT,
+                    valuation_consent TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -172,6 +168,9 @@ async def init_db():
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_position TEXT;""")
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_consent TEXT;""")
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_telegram TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS company_website TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS simulate_consent TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_consent TEXT;""")
 
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_email;""")
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_telegram;""")
@@ -474,5 +473,32 @@ async def get_filled_contact_types(user_id: int) -> list[str]:
             filled_types.append("phone")
 
         return filled_types
+    finally:
+        await conn.close()
+
+
+async def get_tool_consent(user_id: int, tool_name: str) -> bool:
+    if tool_name not in {"simulate", "valuation"}:
+        raise ValueError(f"Unsupported tool for consent lookup: {tool_name}")
+
+    column_name = f"{tool_name}_consent"
+
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                f"""
+                SELECT {column_name}
+                FROM users
+                WHERE id = %s;
+                """,
+                (user_id,),
+            )
+            row = await cur.fetchone()
+
+        if not row:
+            return False
+
+        return row[column_name] == "accepted"
     finally:
         await conn.close()

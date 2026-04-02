@@ -6,222 +6,47 @@ from aiogram.types import (
 )
 
 
-def main_menu_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text="Оценить бизнес",
-                callback_data="menu:sell"
-            )],
-            [InlineKeyboardButton(
-                text="Материалы для ознакомления", 
-                callback_data="menu:materials"
-            )],
-            [InlineKeyboardButton(
-                text="Связаться с нами",
-                callback_data="menu:call"
-            )],
-            [InlineKeyboardButton(
-                text="Скрыть меню",
-                callback_data="menu:hide"
-            )],
-        ]
-    )
-
-
-def sell_submenu_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text="Продать весь бизнес",
-                callback_data="track:t1"
-            )],
-            [InlineKeyboardButton(
-                text="Продать часть бизнеса / сотрудничать",
-                callback_data="track:t2"
-            )],
-        ]
-    )
-
-
-def question_feedback_keyboard(question_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text="Да, ответили",
-                callback_data=f"question_feedback:yes:{question_id}"
-            )],
-            [InlineKeyboardButton(
-                text="Нет, не до конца",
-                callback_data=f"question_feedback:no:{question_id}"
-            )],
-        ]
-    )
-
-
-def persistent_menu_reply_keyboard() -> ReplyKeyboardMarkup:
+def persistent_main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Get AIvel")],
+            [KeyboardButton(text="Menu")],
             [KeyboardButton(text="Simulate Savings")],
+            [KeyboardButton(text="Valuation simulator")],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Choose an action"
+        input_field_placeholder="Choose an action",
     )
 
 
-def onboarding_extra_info_keyboard() -> InlineKeyboardMarkup:
+def menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Да", callback_data="onboarding:extra:yes")],
-            [InlineKeyboardButton(text="Нет", callback_data="onboarding:extra:no")],
+            [InlineKeyboardButton(text="Book a meeting (corporate or accounting firm)", callback_data="stub:book_meeting")],
+            [InlineKeyboardButton(text="Meet us at events", callback_data="stub:events")],
+            [InlineKeyboardButton(text="Our products & services", callback_data="stub:products")],
+            [InlineKeyboardButton(text="Videos & Case studies", callback_data="stub:videos")],
         ]
     )
 
 
-def onboarding_consent_keyboard() -> InlineKeyboardMarkup:
+def website_optional_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Принимаю", callback_data="onboarding:accept")],
+            [InlineKeyboardButton(text="Нет сайта", callback_data="onboarding:no_site")],
         ]
     )
 
 
-def onboarding_learn_more_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Learn more", callback_data="onboarding:learn_more")],
-        ]
-    )
-
-
-def onboarding_contact_position_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Собственник")],
-            [KeyboardButton(text="Партнёр")],
-            [KeyboardButton(text="CEO")],
-            [KeyboardButton(text="Операционный руководитель")],
-            [KeyboardButton(text="Другая должность")],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-        input_field_placeholder="Выберите должность"
-    )
-
-
-def role_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Собственник", callback_data="role:owner")],
-        [InlineKeyboardButton(text="Партнёр", callback_data="role:partner")],
-        [InlineKeyboardButton(text="CEO", callback_data="role:ceo")],
-        [InlineKeyboardButton(text="Операционный руководитель", callback_data="role:ops")],
-    ])
-
-
-def business_size_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Крупный", callback_data="size:large")],
-        [InlineKeyboardButton(text="Средний", callback_data="size:medium")],
-        [InlineKeyboardButton(text="Небольшой", callback_data="size:small")],
-    ])
-
-
-def timeframe_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Сейчас", callback_data="time:now")],
-        [InlineKeyboardButton(text="3–6 месяцев", callback_data="time:3_6")],
-        [InlineKeyboardButton(text="6–12 месяцев", callback_data="time:6_12")],
-        [InlineKeyboardButton(text="Позже", callback_data="time:later")],
-    ])
-
-
-def motivation_keyboard(track: str) -> InlineKeyboardMarkup:
-    if track == "t1":
-        items = [
-            ("Хочу выйти из операционки", "motivation:exit"),
-            ("Нужна сделка / ликвидность", "motivation:liquidity"),
-            ("Устал тащить всё на себе", "motivation:burnout"),
-            ("Хочу снизить риски", "motivation:risk"),
-        ]
-    else:
-        items = [
-            ("Хочу расти быстрее", "motivation:growth"),
-            ("Нужен сильный партнёр", "motivation:partner"),
-            ("Хочу сохранить контроль", "motivation:control"),
-            ("Нужна поддержка в масштабировании", "motivation:scale"),
-        ]
+def tool_consent_keyboard(nda_checked: bool, terms_checked: bool, tool_name: str) -> InlineKeyboardMarkup:
+    nda_icon = "✅" if nda_checked else "⬜"
+    terms_icon = "✅" if terms_checked else "⬜"
 
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=text, callback_data=callback)]
-            for text, callback in items
-        ]
-    )
-
-
-def final_status_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text="Оставить свои контакты",
-                callback_data="contact:start"
-            )]
-        ]
-    )
-
-
-def contact_consent_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text="Принимаю",
-                callback_data="contact:accept"
-            )]
-        ]
-    )
-
-
-def contact_type_keyboard(available_types: list[str]) -> InlineKeyboardMarkup:
-    labels = {
-        "email": "Email",
-        "telegram": "Telegram",
-        "phone": "Телефон",
-    }
-
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text=labels[contact_type],
-                callback_data=f"contact_type:{contact_type}"
-            )]
-            for contact_type in available_types
-        ]
-    )
-
-
-def warmup_interest_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text="Заинтересовался",
-                callback_data="warmup:interested"
-            )]
-        ]
-    )
-
-
-def after_contact_saved_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text="Оставить еще один способ связи",
-                callback_data="contact:add_more"
-            )],
-            [InlineKeyboardButton(
-                text="Ошибся при вводе данных",
-                callback_data="contact:edit"
-            )],
+            [InlineKeyboardButton(text=f"{nda_icon} NDA from AIVEL side", callback_data="consent:toggle:nda")],
+            [InlineKeyboardButton(text=f"{terms_icon} Terms + Privacy + Marketing", callback_data="consent:toggle:terms")],
+            [InlineKeyboardButton(text="Соглашаюсь", callback_data=f"consent:submit:{tool_name}")],
+            [InlineKeyboardButton(text="Назад", callback_data="consent:back")],
         ]
     )
