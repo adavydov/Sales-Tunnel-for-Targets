@@ -20,17 +20,10 @@ CONTACT_COLUMN_BY_TYPE = {
     "phone": "contact_phone",
 }
 ALLOWED_PROFILE_FIELDS = {
-    "track",
-    "role",
-    "business_size",
-    "timeframe",
-    "motivation",
     "company",
-    "contact_name",
-    "contact_phone",
-    "contact_email",
-    "contact_position",
-    "onboarding_consent",
+    "company_website",
+    "simulate_consent",
+    "valuation_consent",
 }
 
 
@@ -143,6 +136,9 @@ async def init_db():
                     contact_position TEXT,
                     onboarding_consent TEXT,
                     contact_telegram TEXT,
+                    company_website TEXT,
+                    simulate_consent TEXT,
+                    valuation_consent TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -172,6 +168,9 @@ async def init_db():
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_position TEXT;""")
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_consent TEXT;""")
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_telegram TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS company_website TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS simulate_consent TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_consent TEXT;""")
 
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_email;""")
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_telegram;""")
