@@ -1,55 +1,52 @@
-# import logging
-# from zoneinfo import ZoneInfo
+import logging
+from zoneinfo import ZoneInfo
 
-# from apscheduler.schedulers.asyncio import AsyncIOScheduler
-# from aiogram import Bot
+from aiogram import Bot
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-# from app.db import get_all_users, get_random_warmup_message, log_warmup_delivery
-# from app.keyboards import warmup_interest_keyboard
+from app.db import add_event, get_all_users
 
-# logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
-
-# async def send_hourly_warmup(bot: Bot):
-#     warmup_message = await get_random_warmup_message()
-#     if not warmup_message:
-#         logger.info("Нет активных прогревных сообщений")
-#         return
-
-#     users = await get_all_users()
-#     if not users:
-#         logger.info("Нет пользователей для прогрева")
-#         return
-
-#     text = f"{warmup_message['title']}\n\n{warmup_message['body']}"
-
-#     for user in users:
-#         try:
-#             await bot.send_message(
-#                 chat_id=user["telegram_id"],
-#                 text=text,
-#                 reply_markup=warmup_interest_keyboard(),
-#             )
-#             await log_warmup_delivery(user["id"], warmup_message["id"])
-#         except Exception as e:
-#             logger.warning(
-#                 "Не удалось отправить прогрев пользователю %s: %s",
-#                 user["telegram_id"],
-#                 e,
-#             )
+WARMUP_IMAGE_URL = "https://dummyimage.com/1200x630/111827/ffffff&text=AIVEL"
+WARMUP_TEXT = (
+    "🔥 <b>Daily Targeted Warmup from AIVEL</b>\n\n"
+    "Soon you will receive useful cases, articles, and practical insights here every day.\n"
+    "For now, keep our website handy: https://aivel.ai/"
+)
 
 
-# def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
-#     scheduler = AsyncIOScheduler(timezone=ZoneInfo("Europe/Berlin"))
+async def send_daily_warmup(bot: Bot):
+    users = await get_all_users()
+    if not users:
+        logger.info("No users for daily warmup")
+        return
 
-#     scheduler.add_job(
-#         send_hourly_warmup,
-#         trigger="cron",
-#         minute=0,
-#         kwargs={"bot": bot},
-#         id="hourly_warmup",
-#         replace_existing=True,
-#     )
+    for user in users:
+        try:
+            await bot.send_photo(
+                chat_id=user["telegram_id"],
+                photo=WARMUP_IMAGE_URL,
+                caption=WARMUP_TEXT,
+                parse_mode="HTML",
+            )
+            await add_event(user["id"], "daily_warmup_sent")
+        except Exception as exc:
+            logger.warning("Failed to send warmup to %s: %s", user["telegram_id"], exc)
 
-#     scheduler.start()
-#     return scheduler
+
+def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
+    scheduler = AsyncIOScheduler(timezone=ZoneInfo("UTC"))
+
+    scheduler.add_job(
+        send_daily_warmup,
+        trigger="cron",
+        hour=14,
+        minute=0,
+        kwargs={"bot": bot},
+        id="daily_warmup",
+        replace_existing=True,
+    )
+
+    scheduler.start()
+    return scheduler
