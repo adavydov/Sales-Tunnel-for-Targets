@@ -475,30 +475,3 @@ async def get_filled_contact_types(user_id: int) -> list[str]:
         return filled_types
     finally:
         await conn.close()
-
-
-async def get_tool_consent(user_id: int, tool_name: str) -> bool:
-    if tool_name not in {"simulate", "valuation"}:
-        raise ValueError(f"Unsupported tool for consent lookup: {tool_name}")
-
-    column_name = f"{tool_name}_consent"
-
-    conn = await get_connection()
-    try:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                f"""
-                SELECT {column_name}
-                FROM users
-                WHERE id = %s;
-                """,
-                (user_id,),
-            )
-            row = await cur.fetchone()
-
-        if not row:
-            return False
-
-        return row[column_name] == "accepted"
-    finally:
-        await conn.close()

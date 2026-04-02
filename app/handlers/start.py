@@ -6,13 +6,8 @@ from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 
-from app.db import add_event, get_tool_consent, save_profile_field, upsert_user
-from app.keyboards import (
-    menu_keyboard,
-    persistent_main_keyboard,
-    tool_consent_keyboard,
-    website_optional_keyboard,
-)
+from app.db import add_event, save_profile_field, upsert_user
+from app.keyboards import menu_keyboard, persistent_main_keyboard, tool_consent_keyboard
 from app.states import OnboardingFlow, ToolConsentFlow
 
 router = Router()
@@ -28,8 +23,7 @@ ONBOARDING_PROMO_TEXT = (
     "• использовать valuation-оценку для accounting firm;\n"
     "• находить кейсы, видео и полезные материалы.\n\n"
     "С этого момента вам доступен базовый функционал: каждый день в 14:00 будет приходить"
-    " прогрев с материалами, ссылками и обновлениями.\n\n"
-    "Сайт компании: https://aivel.ru"
+    " прогрев с материалами, ссылками и обновлениями."
 )
 
 TOOL_PLACEHOLDER_TEXT = (
@@ -45,13 +39,7 @@ CONSENT_TEXT = (
     "acceptance for receive marketing communication."
 )
 
-MENU_TEXT = "Вот какие у меня есть функции:"
-BOOK_MEETING_TEXT = (
-    "Для организации созвона напишите нам:\n\n"
-    "• Email: hello@aivel.ru\n"
-    "• Telegram: @aivel_ai\n"
-    "• Website: https://aivel.ru"
-)
+MENU_TEXT = "Выберите раздел (пока везде заглушки):"
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -61,61 +49,6 @@ async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
         username=tg_user.username,
         first_name=tg_user.first_name,
         last_name=tg_user.last_name,
-    )
-
-
-async def send_onboarding_complete(message: Message):
-    await message.answer(ONBOARDING_PROMO_TEXT, parse_mode="HTML", reply_markup=persistent_main_keyboard())
-
-
-async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FSMContext, tool_name: str):
-    user_id = await get_db_user_id(message_or_callback)
-    await add_event(user_id, "tool_open_requested", tool_name)
-
-    already_accepted = await get_tool_consent(user_id, tool_name)
-    if already_accepted:
-        if isinstance(message_or_callback, CallbackQuery):
-            await message_or_callback.message.answer(
-                TOOL_PLACEHOLDER_TEXT,
-                reply_markup=persistent_main_keyboard(),
-            )
-            await message_or_callback.answer()
-            return
-
-        await message_or_callback.answer(
-            TOOL_PLACEHOLDER_TEXT,
-            reply_markup=persistent_main_keyboard(),
-        )
-        return
-
-    await state.clear()
-    await state.update_data(
-        db_user_id=user_id,
-        tool_name=tool_name,
-        consent_nda=False,
-        consent_terms=False,
-    )
-    await state.set_state(ToolConsentFlow.waiting)
-
-    if isinstance(message_or_callback, CallbackQuery):
-        await message_or_callback.message.answer(
-            CONSENT_TEXT,
-            reply_markup=tool_consent_keyboard(False, False, tool_name),
-        )
-        await message_or_callback.message.answer(
-            " ",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        await message_or_callback.answer()
-        return
-
-    await message_or_callback.answer(
-        CONSENT_TEXT,
-        reply_markup=tool_consent_keyboard(False, False, tool_name),
-    )
-    await message_or_callback.answer(
-        " ",
-        reply_markup=ReplyKeyboardRemove(),
     )
 
 
@@ -148,8 +81,7 @@ async def onboarding_company(message: Message, state: FSMContext):
 
     await state.set_state(OnboardingFlow.website)
     await message.answer(
-        "Прикрепите www-ссылку на сайт компании.",
-        reply_markup=website_optional_keyboard(),
+        "Прикрепите www-ссылку на сайт компании (если сайта нет, отправьте: Нет сайта)."
     )
 
 
@@ -163,7 +95,9 @@ async def onboarding_website(message: Message, state: FSMContext):
     website_raw = message.text.strip()
     website_value = website_raw
 
-    if not URL_RE.match(website_raw):
+    if website_raw.lower() in {"нет", "нет сайта", "no", "none", "-"}:
+        website_value = "not_provided"
+    elif not URL_RE.match(website_raw):
         await message.answer("Ссылка выглядит некорректно. Пример: www.company.com или https://company.com")
         return
 
@@ -174,26 +108,16 @@ async def onboarding_website(message: Message, state: FSMContext):
     await add_event(user_id, "onboarding_website_saved", website_value)
 
     await state.clear()
-    await send_onboarding_complete(message)
+    await message.answer(ONBOARDING_PROMO_TEXT, parse_mode="HTML")
+    await message.answer(
+        "Готово! Основные кнопки уже на клавиатуре ниже.",
+        reply_markup=persistent_main_keyboard(),
+    )
 
 
 @router.message(OnboardingFlow.website)
 async def onboarding_website_invalid(message: Message):
-    await message.answer("Пожалуйста, отправьте ссылку текстом или нажмите кнопку «Нет сайта».")
-
-
-@router.callback_query(OnboardingFlow.website, F.data == "onboarding:no_site")
-async def onboarding_no_site(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-
-    await save_profile_field(user_id, "company_website", "")
-    await add_event(user_id, "onboarding_website_saved", "")
-
-    await state.clear()
-    await callback.message.delete()
-    await send_onboarding_complete(callback.message)
-    await callback.answer()
+    await message.answer("Пожалуйста, отправьте ссылку текстом или напишите «Нет сайта».")
 
 
 @router.message(StateFilter(None), F.text == "Menu")
@@ -205,36 +129,62 @@ async def open_menu(message: Message):
 
 @router.message(StateFilter(None), F.text == "Simulate Savings")
 async def open_simulate_from_keyboard(message: Message, state: FSMContext):
-    await open_tool_flow(message, state, "simulate")
+    user_id = await get_db_user_id(message)
+    await add_event(user_id, "tool_open_requested", "simulate")
+
+    await state.clear()
+    await state.update_data(db_user_id=user_id, tool_name="simulate", consent_nda=False, consent_terms=False)
+    await state.set_state(ToolConsentFlow.waiting)
+
+    await message.answer(
+        CONSENT_TEXT,
+        reply_markup=tool_consent_keyboard(False, False, "simulate"),
+    )
 
 
 @router.message(StateFilter(None), F.text == "Valuation simulator")
 async def open_valuation_from_keyboard(message: Message, state: FSMContext):
-    await open_tool_flow(message, state, "valuation")
+    user_id = await get_db_user_id(message)
+    await add_event(user_id, "tool_open_requested", "valuation")
+
+    await state.clear()
+    await state.update_data(db_user_id=user_id, tool_name="valuation", consent_nda=False, consent_terms=False)
+    await state.set_state(ToolConsentFlow.waiting)
+
+    await message.answer(
+        CONSENT_TEXT,
+        reply_markup=tool_consent_keyboard(False, False, "valuation"),
+    )
 
 
 @router.callback_query(F.data == "tool:simulate")
 async def open_simulate_from_menu(callback: CallbackQuery, state: FSMContext):
-    await open_tool_flow(callback, state, "simulate")
+    user_id = await get_db_user_id(callback)
+    await add_event(user_id, "tool_open_requested", "simulate")
+
+    await state.clear()
+    await state.update_data(db_user_id=user_id, tool_name="simulate", consent_nda=False, consent_terms=False)
+    await state.set_state(ToolConsentFlow.waiting)
+
+    await callback.message.answer(
+        CONSENT_TEXT,
+        reply_markup=tool_consent_keyboard(False, False, "simulate"),
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data == "tool:valuation")
 async def open_valuation_from_menu(callback: CallbackQuery, state: FSMContext):
-    await open_tool_flow(callback, state, "valuation")
+    user_id = await get_db_user_id(callback)
+    await add_event(user_id, "tool_open_requested", "valuation")
 
-
-@router.callback_query(ToolConsentFlow.waiting, F.data == "consent:back")
-async def consent_back(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-    tool_name = data.get("tool_name", "unknown")
-
-    await add_event(user_id, "tool_consent_back", tool_name)
     await state.clear()
-    await callback.message.delete()
+    await state.update_data(db_user_id=user_id, tool_name="valuation", consent_nda=False, consent_terms=False)
+    await state.set_state(ToolConsentFlow.waiting)
+
     await callback.message.answer(
-        "‎",
-        reply_markup=persistent_main_keyboard(),
+        CONSENT_TEXT,
+        reply_markup=tool_consent_keyboard(False, False, "valuation"),
     )
     await callback.answer()
 
@@ -278,14 +228,7 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
     await add_event(user_id, "tool_consent_accepted", tool_name)
 
     await state.clear()
-    await callback.message.delete()
     await callback.message.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
-    await callback.answer()
-
-
-@router.callback_query(F.data == "stub:book_meeting")
-async def book_meeting(callback: CallbackQuery):
-    await callback.message.answer(BOOK_MEETING_TEXT, disable_web_page_preview=True)
     await callback.answer()
 
 
