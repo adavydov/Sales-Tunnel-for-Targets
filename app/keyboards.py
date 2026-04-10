@@ -69,7 +69,7 @@ def simulate_results_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
-            [InlineKeyboardButton(text="📈 Хотите точнее? +5 вопроса", callback_data="simulate:precise:more5")],
+            [InlineKeyboardButton(text="📈 Хотите точнее? +5 вопросов", callback_data="simulate:precise:more5")],
             [InlineKeyboardButton(text="📊 Скачать Excel-файл", callback_data="simulate:mode:pro")],
             [InlineKeyboardButton(text="↩️ Назад", callback_data="simulate:back")],
         ]
@@ -81,6 +81,31 @@ def simulate_skip_question_keyboard(question_key: str) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="Пропустить вопрос", callback_data=f"simulate:express:skip:{question_key}")],
             [InlineKeyboardButton(text="Назад", callback_data="simulate:back")],
+        ]
+    )
+
+
+def simulate_precise_skip_keyboard(callback_data: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Пропустить вопрос", callback_data=callback_data)],
+        ]
+    )
+
+
+def simulate_contacts_choice_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Поделиться", callback_data="simulate:contacts:share")],
+            [InlineKeyboardButton(text="Пропустить вопрос", callback_data="simulate:contacts:skip")],
+        ]
+    )
+
+
+def simulate_contact_field_keyboard(skip_callback: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Пропустить поле", callback_data=skip_callback)],
         ]
     )
 
@@ -109,7 +134,7 @@ def simulate_precise_results_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
-            [InlineKeyboardButton(text="📈 Хотите точнее? +3 вопроса", callback_data="simulate:precise:more")],
+            [InlineKeyboardButton(text="📈 Хотите точнее? +5 вопросов", callback_data="simulate:precise:more5")],
             [InlineKeyboardButton(text="↩️ Назад", callback_data="simulate:back")],
         ]
     )
@@ -118,9 +143,25 @@ def simulate_precise_results_keyboard() -> InlineKeyboardMarkup:
 def simulate_plus3_standardization_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Высокая", callback_data="simulate:plus3:std:high")],
-            [InlineKeyboardButton(text="Средняя", callback_data="simulate:plus3:std:medium")],
-            [InlineKeyboardButton(text="Низкая", callback_data="simulate:plus3:std:low")],
+            [
+                InlineKeyboardButton(
+                    text="Высокая стандартизация: есть регламенты, чек-листы, единая методология",
+                    callback_data="simulate:plus3:std:high",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Средняя стандартизация: базовые стандарты есть, но много ручной работы",
+                    callback_data="simulate:plus3:std:medium",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Низкая стандартизация: процессы не описаны",
+                    callback_data="simulate:plus3:std:low",
+                )
+            ],
+            [InlineKeyboardButton(text="Пропустить вопрос", callback_data="simulate:plus3:std:skip")],
         ]
     )
 
@@ -128,10 +169,20 @@ def simulate_plus3_standardization_keyboard() -> InlineKeyboardMarkup:
 def simulate_plus3_automation_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Нет, всё вручную", callback_data="simulate:plus3:auto:none")],
-            [InlineKeyboardButton(text="Частично", callback_data="simulate:plus3:auto:partial")],
-            [InlineKeyboardButton(text="Есть CRM/системы", callback_data="simulate:plus3:auto:crm")],
-            [InlineKeyboardButton(text="Продвинутая (RPA/боты)", callback_data="simulate:plus3:auto:rpa")],
+            [InlineKeyboardButton(text="Нет, всё вручную — только 1С и Excel", callback_data="simulate:plus3:auto:none")],
+            [
+                InlineKeyboardButton(
+                    text="Частично — макросы, автовыгрузки, шаблоны, таск-менеджер",
+                    callback_data="simulate:plus3:auto:partial",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Да, есть системы — используем RPA/ботов/AI",
+                    callback_data="simulate:plus3:auto:systems",
+                )
+            ],
+            [InlineKeyboardButton(text="Пропустить вопрос", callback_data="simulate:plus3:auto:skip")],
         ]
     )
 
@@ -139,10 +190,29 @@ def simulate_plus3_automation_keyboard() -> InlineKeyboardMarkup:
 def simulate_plus3_advisory_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Менее 5%", callback_data="simulate:plus3:advisory:lt5")],
-            [InlineKeyboardButton(text="5-15%", callback_data="simulate:plus3:advisory:5_15")],
-            [InlineKeyboardButton(text="15-25%", callback_data="simulate:plus3:advisory:15_25")],
-            [InlineKeyboardButton(text="Более 25%", callback_data="simulate:plus3:advisory:gt25")],
+            [InlineKeyboardButton(text="Менее 10%", callback_data="simulate:plus3:advisory:lt10")],
+            [InlineKeyboardButton(text="10-20%", callback_data="simulate:plus3:advisory:10_20")],
+            [InlineKeyboardButton(text="Более 20%", callback_data="simulate:plus3:advisory:gt20")],
+            [InlineKeyboardButton(text="Пропустить вопрос", callback_data="simulate:plus3:advisory:skip")],
+        ]
+    )
+
+
+def simulate_growth_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Нет", callback_data="simulate:post:growth:none")],
+            [InlineKeyboardButton(text="Да, обычный рост +5–20%", callback_data="simulate:post:growth:normal")],
+            [InlineKeyboardButton(text="Да, быстрый рост >20%", callback_data="simulate:post:growth:fast")],
+        ]
+    )
+
+
+def simulate_mna_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Да", callback_data="simulate:post:mna:yes")],
+            [InlineKeyboardButton(text="Нет", callback_data="simulate:post:mna:no")],
         ]
     )
 
