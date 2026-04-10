@@ -118,9 +118,25 @@ def simulate_precise_results_keyboard() -> InlineKeyboardMarkup:
 def simulate_plus3_standardization_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Высокая", callback_data="simulate:plus3:std:high")],
-            [InlineKeyboardButton(text="Средняя", callback_data="simulate:plus3:std:medium")],
-            [InlineKeyboardButton(text="Низкая", callback_data="simulate:plus3:std:low")],
+            [
+                InlineKeyboardButton(
+                    text="Высокая стандартизация: есть регламенты, чек-листы, единая методология",
+                    callback_data="simulate:plus3:std:high",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Средняя стандартизация: базовые стандарты есть, но много ручной работы",
+                    callback_data="simulate:plus3:std:medium",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Низкая стандартизация: процессы не описаны",
+                    callback_data="simulate:plus3:std:low",
+                )
+            ],
+            [InlineKeyboardButton(text="Пропустить вопрос", callback_data="simulate:plus3:std:skip")],
         ]
     )
 
@@ -128,9 +144,20 @@ def simulate_plus3_standardization_keyboard() -> InlineKeyboardMarkup:
 def simulate_plus3_automation_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Нет, всё вручную", callback_data="simulate:plus3:auto:none")],
-            [InlineKeyboardButton(text="Частично", callback_data="simulate:plus3:auto:partial")],
-            [InlineKeyboardButton(text="Да, есть системы (RPA/боты/AI)", callback_data="simulate:plus3:auto:systems")],
+            [InlineKeyboardButton(text="Нет, всё вручную — только 1С и Excel", callback_data="simulate:plus3:auto:none")],
+            [
+                InlineKeyboardButton(
+                    text="Частично — макросы, автовыгрузки, шаблоны, таск-менеджер",
+                    callback_data="simulate:plus3:auto:partial",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Да, есть системы — используем RPA/ботов/AI",
+                    callback_data="simulate:plus3:auto:systems",
+                )
+            ],
+            [InlineKeyboardButton(text="Пропустить вопрос", callback_data="simulate:plus3:auto:skip")],
         ]
     )
 
@@ -152,7 +179,6 @@ def simulate_growth_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Нет", callback_data="simulate:post:growth:none")],
             [InlineKeyboardButton(text="Да, обычный рост +5–20%", callback_data="simulate:post:growth:normal")],
             [InlineKeyboardButton(text="Да, быстрый рост >20%", callback_data="simulate:post:growth:fast")],
-            [InlineKeyboardButton(text="Пропустить вопрос", callback_data="simulate:post:growth:skip")],
         ]
     )
 
@@ -162,7 +188,6 @@ def simulate_mna_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="Да", callback_data="simulate:post:mna:yes")],
             [InlineKeyboardButton(text="Нет", callback_data="simulate:post:mna:no")],
-            [InlineKeyboardButton(text="Пропустить вопрос", callback_data="simulate:post:mna:skip")],
         ]
     )
 
