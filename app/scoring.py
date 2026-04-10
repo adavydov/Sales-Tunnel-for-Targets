@@ -132,7 +132,7 @@ def calculate_express_operation_savings(accountants_count: int, monthly_salary_r
 
 
 def calculate_precise_savings_from_express(
-    express_result: dict[str, int],
+    express_result: dict[str, float],
     standardization_band: str,
     automation_band: str,
     advisory_band: str,
@@ -142,13 +142,11 @@ def calculate_precise_savings_from_express(
         "10_20": 0.95,
         "gt20": 0.85,
     }.get(advisory_band, 1.00)
-
     automation_multiplier = {
         "none": 1.00,
         "partial": 0.85,
         "systems": 0.65,
     }.get(automation_band, 1.00)
-
     standardization_multiplier = {
         "high": 1.00,
         "medium": 1.10,

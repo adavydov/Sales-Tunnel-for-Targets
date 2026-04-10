@@ -20,7 +20,6 @@ class SimulateFlow(StatesGroup):
     precise_contact_name = State()
     precise_contact_email = State()
     precise_contact_phone = State()
-    precise_contact_company = State()
     precise_margin = State()
     precise_standardization = State()
     precise_automation = State()

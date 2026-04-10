@@ -817,7 +817,7 @@ async def simulate_precise_clients(message: Message, state: FSMContext):
     await state.update_data(precise_clients=clients)
     await state.set_state(SimulateFlow.precise_contacts)
     await message.answer(
-        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон, Название компании)\n"
+        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон)\n"
         "или пропустить вопрос >",
         parse_mode="HTML",
         reply_markup=simulate_contacts_choice_keyboard(),
@@ -894,7 +894,8 @@ async def simulate_plus3_automation(callback: CallbackQuery, state: FSMContext):
     await state.update_data(plus3_automation="partial" if value == "skip" else value)
     await state.set_state(SimulateFlow.precise_margin)
     await callback.message.answer(
-        "7️⃣ Текущая валовая маржа (%)?\n",
+        "7️⃣ Текущая валовая маржа (%)?\n"
+        "или пропустить вопрос >",
         parse_mode="HTML",
         reply_markup=simulate_precise_skip_keyboard("simulate:precise:margin:skip"),
     )
@@ -911,7 +912,8 @@ async def simulate_plus3_advisory(callback: CallbackQuery, state: FSMContext):
     await state.update_data(plus3_advisory="10_20" if value == "skip" else value)
     await state.set_state(SimulateFlow.precise_clients)
     await callback.message.answer(
-        "4️⃣ Количество активных клиентов?\n",
+        "4️⃣ Количество активных клиентов?\n"
+        "или пропустить вопрос >",
         parse_mode="HTML",
         reply_markup=simulate_precise_skip_keyboard("simulate:precise:clients:skip"),
     )
@@ -923,7 +925,7 @@ async def simulate_precise_clients_skip(callback: CallbackQuery, state: FSMConte
     await state.update_data(precise_clients=0)
     await state.set_state(SimulateFlow.precise_contacts)
     await callback.message.answer(
-        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон, Название компании)\n"
+        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон)\n"
         "или пропустить вопрос >",
         parse_mode="HTML",
         reply_markup=simulate_contacts_choice_keyboard(),
@@ -936,7 +938,7 @@ async def simulate_precise_clients_skip_text(message: Message, state: FSMContext
     await state.update_data(precise_clients=0)
     await state.set_state(SimulateFlow.precise_contacts)
     await message.answer(
-        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон, Название компании)\n"
+        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон)\n"
         "или пропустить вопрос >",
         parse_mode="HTML",
         reply_markup=simulate_contacts_choice_keyboard(),
@@ -1006,46 +1008,24 @@ async def simulate_contact_email_skip(callback: CallbackQuery, state: FSMContext
 @router.message(SimulateFlow.precise_contact_phone, F.text)
 async def simulate_contact_phone(message: Message, state: FSMContext):
     await state.update_data(contact_phone=message.text.strip())
-    await state.set_state(SimulateFlow.precise_contact_company)
-    await message.answer(
-        "Введите название компании:",
-        reply_markup=simulate_contact_field_keyboard("simulate:contacts:company:skip"),
-    )
-
-
-@router.callback_query(SimulateFlow.precise_contact_phone, F.data == "simulate:contacts:phone:skip")
-async def simulate_contact_phone_skip(callback: CallbackQuery, state: FSMContext):
-    await state.update_data(contact_phone="")
-    await state.set_state(SimulateFlow.precise_contact_company)
-    await callback.message.answer(
-        "Введите название компании:",
-        reply_markup=simulate_contact_field_keyboard("simulate:contacts:company:skip"),
-    )
-    await callback.answer()
-
-
-@router.message(SimulateFlow.precise_contact_company, F.text)
-async def simulate_contact_company(message: Message, state: FSMContext):
-    await state.update_data(contact_company=message.text.strip())
     data = await state.get_data()
     await state.update_data(
         precise_contacts=(
             f"name={data.get('contact_name', '')}|email={data.get('contact_email', '')}|"
-            f"phone={data.get('contact_phone', '')}|company={message.text.strip()}"
+            f"phone={message.text.strip()}"
         ),
     )
     await state.set_state(SimulateFlow.precise_standardization)
     await ask_precise_standardization_question(message)
 
 
-@router.callback_query(SimulateFlow.precise_contact_company, F.data == "simulate:contacts:company:skip")
-async def simulate_contact_company_skip(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(SimulateFlow.precise_contact_phone, F.data == "simulate:contacts:phone:skip")
+async def simulate_contact_phone_skip(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(contact_phone="")
     data = await state.get_data()
     await state.update_data(
-        contact_company="",
         precise_contacts=(
-            f"name={data.get('contact_name', '')}|email={data.get('contact_email', '')}|"
-            f"phone={data.get('contact_phone', '')}|company="
+            f"name={data.get('contact_name', '')}|email={data.get('contact_email', '')}|phone="
         ),
     )
     await state.set_state(SimulateFlow.precise_standardization)
@@ -1079,13 +1059,36 @@ async def finalize_precise_assessment(target: Message | CallbackQuery, state: FS
         advisory_band=str(data.get("plus3_advisory", "10_20")),
     )
 
-    precise_range = f"{format_rub(precise_result['precise_min_rub'])} – {format_rub(precise_result['precise_max_rub'])} ₽/мес"
+    k = precise_result["k"]
+    released_6 = int(round(express_result["released_6"] * k))
+    released_12 = int(round(express_result["released_12"] * k))
+    payroll_saved_6 = express_result["payroll_saved_6"] * k
+    payroll_saved_12 = express_result["payroll_saved_12"] * k
+    ai_cost_6 = express_result["ai_cost_6"] * k
+    ai_cost_12 = express_result["ai_cost_12"] * k
+    net_6 = express_result["net_6"] * k
+    net_12 = express_result["net_12"] * k
+
+    precise_range = f"{format_rub(min(net_6, net_12))} – {format_rub(max(net_6, net_12))} ₽/мес"
     text = (
         "🎯 <b>Ваши результаты с Aivel:</b>\n\n"
         "Спасибо — на основе ваших ответов мы уточнили базовую оценку и рассчитали более точный потенциал "
         "экономии с учётом специфики именно вашей фирмы.\n"
-        f"<b>Диапазон точной экономии: {precise_range}</b>\n"
-        f"<i>Итоговый K: {precise_result['k']:.2f}</i>"
+        "Шаги расчёта через 6 месяцев и через 12 месяцев\n\n"
+        "1. <b>Число высвобождаемых бухгалтеров</b>\n"
+        f"• через 6 месяцев: <b>{released_6}</b>\n"
+        f"• через 12 месяцев: <b>{released_12}</b>\n\n"
+        "2. <b>Сохраняемая месячная зарплатная масса</b>\n"
+        f"• через 6 месяцев: <b>{format_rub(payroll_saved_6)} ₽ в месяц</b>\n"
+        f"• через 12 месяцев: <b>{format_rub(payroll_saved_12)} ₽ в месяц</b>\n\n"
+        "3. <b>Новая стоимость операций на базе искусственного интеллекта</b>\n"
+        f"• через 6 месяцев: <b>{format_rub(ai_cost_6)} ₽ в месяц</b>\n"
+        f"• через 12 месяцев: <b>{format_rub(ai_cost_12)} ₽ в месяц</b>\n\n"
+        "4. <b>Чистая экономия в месяц</b>\n"
+        f"• через 6 месяцев: <b>{format_rub(net_6)} ₽ в месяц</b>\n"
+        f"• через 12 месяцев: <b>{format_rub(net_12)} ₽ в месяц</b>\n\n"
+        f"<i>Итоговый K: {k:.2f}</i>\n"
+        f"<i>Диапазон точной экономии: {precise_range}</i>"
     )
 
     user_id = await get_db_user_id(target)
@@ -1097,7 +1100,7 @@ async def finalize_precise_assessment(target: Message | CallbackQuery, state: FS
             f"clients={data.get('precise_clients', 0)};contacts={data.get('precise_contacts', '')};"
             f"margin={data.get('precise_margin', 0)};std={data.get('plus3_standardization', 'medium')};"
             f"auto={data.get('plus3_automation', 'partial')};advisory={data.get('plus3_advisory', '10_20')};"
-            f"k={precise_result['k']:.4f};range={precise_range}"
+            f"k={k:.4f};range={precise_range};net6={format_rub(net_6)};net12={format_rub(net_12)}"
         ),
     )
 
@@ -1105,13 +1108,13 @@ async def finalize_precise_assessment(target: Message | CallbackQuery, state: FS
     if isinstance(target, CallbackQuery):
         await target.message.answer(text, parse_mode="HTML")
         await target.message.answer(
-            "Планируете ли вы рост в ближайшие 12-24 месяца?",
+            "Планируете ли вы рост в ближайшие 12-24 месяца?\nВыберите вариант ответа:\n• Нет\n• Да, обычный рост +5–20%\n• Да, быстрый рост >20%",
             reply_markup=simulate_growth_keyboard(),
         )
     else:
         await target.answer(text, parse_mode="HTML")
         await target.answer(
-            "Планируете ли вы рост в ближайшие 12-24 месяца?",
+            "Планируете ли вы рост в ближайшие 12-24 месяца?\nВыберите вариант ответа:\n• Нет\n• Да, обычный рост +5–20%\n• Да, быстрый рост >20%",
             reply_markup=simulate_growth_keyboard(),
         )
 
@@ -1126,7 +1129,7 @@ async def simulate_post_growth(callback: CallbackQuery, state: FSMContext):
     await state.update_data(post_growth=value)
     await state.set_state(SimulateFlow.precise_mna)
     await callback.message.answer(
-        "Рассматриваете ли вы M&A / привлечение инвестиций?",
+        "Рассматриваете ли вы M&A / привлечение инвестиций?\nВыберите вариант ответа:\n• Да\n• Нет",
         reply_markup=simulate_mna_keyboard(),
     )
     await callback.answer()
