@@ -20,6 +20,7 @@ from app.calendly import (
 from app.config import MEETING_TIMEZONE
 from app.db import add_event, get_tool_consent, save_profile_field, upsert_user
 from app.keyboards import (
+    calendly_meeting_keyboard,
     meeting_calendar_keyboard,
     meeting_custom_time_keyboard,
     meeting_slots_keyboard,
@@ -479,8 +480,12 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "stub:book_meeting")
 async def book_meeting(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer(BOOK_MEETING_TEXT)
-    await start_meeting_booking(callback.message, state)
+    await state.clear()
+    await callback.message.answer(
+        "Запись на встречу открыта в Calendly 👇",
+        reply_markup=calendly_meeting_keyboard(),
+        disable_web_page_preview=True,
+    )
     await callback.answer()
 
 

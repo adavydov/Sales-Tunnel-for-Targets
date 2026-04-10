@@ -220,3 +220,11 @@ def meeting_waiting_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Назад", callback_data="meeting:back")],
         ]
     )
+
+
+def calendly_meeting_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Открыть Calendly", url="https://calendly.com/4davyd0vcreate/30min")],
+        ]
+    )
