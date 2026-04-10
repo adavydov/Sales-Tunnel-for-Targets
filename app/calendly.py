@@ -79,13 +79,13 @@ def _request(method: str, path: str, *, query: dict | None = None, body: dict | 
         raise CalendlyRequestError(f"Calendly connection error: {exc}") from exc
 
 
-def _resolve_event_type() -> dict[str, str | None]:
+def _resolve_event_type() -> dict[str, str | list[str]]:
     if not CALENDLY_EVENT_TYPE_URI:
         raise CalendlyNotConfiguredError("CALENDLY_EVENT_TYPE_URI is missing.")
 
     raw_value = CALENDLY_EVENT_TYPE_URI.strip()
     if raw_value.startswith(EVENT_TYPE_API_PREFIX):
-        return {"uri": raw_value, "location_kind": None}
+        return {"uri": raw_value, "location_kinds": []}
 
     normalized = _normalize_url(raw_value)
     if "calendly.com/" not in normalized:
@@ -107,8 +107,11 @@ def _resolve_event_type() -> dict[str, str | None]:
             continue
         if _normalize_url(scheduling_url) == normalized:
             locations = item.get("locations") or []
-            location_kind = locations[0].get("kind") if locations and isinstance(locations[0], dict) else None
-            return {"uri": event_uri, "location_kind": location_kind}
+            location_kinds = []
+            for location in locations:
+                if isinstance(location, dict) and location.get("kind"):
+                    location_kinds.append(location["kind"])
+            return {"uri": event_uri, "location_kinds": location_kinds}
 
     raise CalendlyRequestError(
         "Не удалось сопоставить CALENDLY_EVENT_TYPE_URI с event type. "
@@ -162,7 +165,7 @@ def is_slot_available(slot_dt_local: datetime) -> bool:
 def book_slot(slot_dt_local: datetime, invitee_name: str, invitee_email: str) -> CalendlyBookingResult:
     event_type = _resolve_event_type()
     event_type_uri = str(event_type["uri"])
-    body = {
+    base_body = {
         "event_type": event_type_uri,
         "start_time": slot_dt_local.astimezone(ZoneInfo("UTC")).isoformat().replace("+00:00", "Z"),
         "invitee": {
@@ -171,10 +174,35 @@ def book_slot(slot_dt_local: datetime, invitee_name: str, invitee_email: str) ->
             "timezone": MEETING_TIMEZONE,
         },
     }
-    location_kind = event_type.get("location_kind")
-    if location_kind:
-        body["location_configuration"] = {"kind": location_kind}
-    response = _request("POST", "/invitees", body=body)
+
+    location_kinds = event_type.get("location_kinds")
+    candidate_kinds = list(location_kinds) if isinstance(location_kinds, list) else []
+
+    last_error: CalendlyRequestError | None = None
+    if candidate_kinds:
+        for kind in candidate_kinds:
+            try:
+                payload = dict(base_body)
+                payload["location_configuration"] = {"kind": kind}
+                response = _request("POST", "/invitees", body=payload)
+                resource = response.get("resource", {})
+                return CalendlyBookingResult(
+                    booking_url=resource.get("scheduling_url", ""),
+                    cancel_url=resource.get("cancel_url"),
+                    reschedule_url=resource.get("reschedule_url"),
+                )
+            except CalendlyRequestError as exc:
+                last_error = exc
+                if "invalid_location_choice" not in str(exc):
+                    raise
+
+    try:
+        response = _request("POST", "/invitees", body=base_body)
+    except CalendlyRequestError:
+        if last_error is not None:
+            raise last_error
+        raise
+
     resource = response.get("resource", {})
     return CalendlyBookingResult(
         booking_url=resource.get("scheduling_url", ""),
