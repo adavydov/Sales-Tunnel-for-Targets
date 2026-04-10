@@ -12,6 +12,7 @@ from app.keyboards import (
     menu_keyboard,
     persistent_main_keyboard,
     simulate_deep_assessment_keyboard,
+    simulate_deep_wait_keyboard,
     simulate_mode_keyboard,
     simulate_plus3_advisory_keyboard,
     simulate_plus3_automation_keyboard,
@@ -122,6 +123,7 @@ WAIT_FILE_TEXT = (
     "Вы можете загрузить Excel сюда или нажать «Отправил по почте», если уже отправили на success@aivel.ai."
 )
 THANKS_DEEP_TEXT = "Спасибо! С вами свяжутся в течение 2 рабочих дней."
+THANKS_TOOL_TEXT = "Спасибо, что воспользовались нашим инструментом, надеемся он оказался полезным."
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -188,6 +190,16 @@ async def send_simulate_mode_menu(target: Message | CallbackQuery, state: FSMCon
         parse_mode="HTML",
         reply_markup=simulate_mode_keyboard(),
     )
+
+
+async def ensure_simulate_consent(callback: CallbackQuery, state: FSMContext) -> bool:
+    user_id = await get_db_user_id(callback)
+    already_accepted = await get_tool_consent(user_id, "simulate")
+    if already_accepted:
+        return True
+
+    await open_tool_flow(callback, state, "simulate")
+    return False
 
 
 async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FSMContext, tool_name: str):
@@ -427,6 +439,9 @@ async def simulate_mode_menu(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(SimulateFlow.mode_select, F.data == "simulate:mode:express")
 async def simulate_mode_express(callback: CallbackQuery, state: FSMContext):
+    if not await ensure_simulate_consent(callback, state):
+        return
+
     user_id = await get_db_user_id(callback)
     await add_event(user_id, "simulate_mode_selected", "express")
 
@@ -442,6 +457,9 @@ async def simulate_mode_express(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(SimulateFlow.mode_select, F.data == "simulate:mode:precise")
 async def simulate_mode_precise(callback: CallbackQuery, state: FSMContext):
+    if not await ensure_simulate_consent(callback, state):
+        return
+
     user_id = await get_db_user_id(callback)
     await add_event(user_id, "simulate_mode_selected", "precise")
 
@@ -457,7 +475,10 @@ async def simulate_mode_precise(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(SimulateFlow.mode_select, F.data == "simulate:mode:pro")
-async def simulate_mode_pro(callback: CallbackQuery):
+async def simulate_mode_pro(callback: CallbackQuery, state: FSMContext):
+    if not await ensure_simulate_consent(callback, state):
+        return
+
     user_id = await get_db_user_id(callback)
     await add_event(user_id, "simulate_mode_selected", "pro")
 
@@ -673,6 +694,9 @@ async def simulate_precise_complex_cases(callback: CallbackQuery, state: FSMCont
 
 @router.callback_query(SimulateFlow.mode_select, F.data == "simulate:precise:more")
 async def simulate_precise_more(callback: CallbackQuery, state: FSMContext):
+    if not await ensure_simulate_consent(callback, state):
+        return
+
     await state.set_state(SimulateFlow.precise_standardization)
     await callback.message.answer(
         "8️⃣ Насколько стандартизированы ваши процессы?\n"
@@ -775,7 +799,7 @@ async def simulate_deep_download(callback: CallbackQuery):
         document=FSInputFile(excel_path),
         caption="📥 Excel-опросник для профессиональной оценки",
     )
-    await callback.message.answer(WAIT_FILE_TEXT, reply_markup=simulate_deep_assessment_keyboard())
+    await callback.message.answer(WAIT_FILE_TEXT, reply_markup=simulate_deep_wait_keyboard())
     await callback.answer()
 
 
@@ -784,14 +808,21 @@ async def simulate_deep_sent_email(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
     await add_event(user_id, "simulate_deep_sent_email")
     await state.set_state(SimulateFlow.mode_select)
-    await callback.message.answer(THANKS_DEEP_TEXT)
+    await callback.message.answer(THANKS_DEEP_TEXT, reply_markup=persistent_main_keyboard())
     await callback.answer()
 
 
 @router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:back")
 async def simulate_deep_back(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SimulateFlow.mode_select)
-    await callback.message.answer("Ну хорошо, ждём вас позже.")
+    await callback.message.answer(THANKS_TOOL_TEXT, reply_markup=persistent_main_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:back_wait")
+async def simulate_deep_back_wait(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(SimulateFlow.mode_select)
+    await callback.message.answer("Ну хорошо, ждём вас позже.", reply_markup=persistent_main_keyboard())
     await callback.answer()
 
 
@@ -805,12 +836,12 @@ async def simulate_wait_excel_upload(message: Message, state: FSMContext):
     user_id = await get_db_user_id(message)
     await add_event(user_id, "simulate_deep_excel_uploaded", document.file_name)
     await state.set_state(SimulateFlow.mode_select)
-    await message.answer(THANKS_DEEP_TEXT)
+    await message.answer(THANKS_DEEP_TEXT, reply_markup=persistent_main_keyboard())
 
 
 @router.message(SimulateFlow.precise_wait_excel)
 async def simulate_wait_excel_invalid(message: Message):
     await message.answer(
         "Пожалуйста, отправьте Excel-файл (.xlsx/.xls/.xlsm) или используйте кнопки ниже.",
-        reply_markup=simulate_deep_assessment_keyboard(),
+        reply_markup=simulate_deep_wait_keyboard(),
     )

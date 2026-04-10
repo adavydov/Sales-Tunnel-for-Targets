@@ -138,7 +138,15 @@ def simulate_deep_assessment_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Скачать Excel-файл", callback_data="simulate:deep:download")],
-            [InlineKeyboardButton(text="✅ Отправил по почте", callback_data="simulate:deep:sent_email")],
             [InlineKeyboardButton(text="↩️ Назад", callback_data="simulate:deep:back")],
+        ]
+    )
+
+
+def simulate_deep_wait_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Отправил по почте", callback_data="simulate:deep:sent_email")],
+            [InlineKeyboardButton(text="↩️ Назад", callback_data="simulate:deep:back_wait")],
         ]
     )
