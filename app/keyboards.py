@@ -67,7 +67,7 @@ def simulate_results_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="✅ Пройти точную оценку", callback_data="simulate:mode:precise")],
             [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
-            [InlineKeyboardButton(text="↩️ Вернуться к выбору режима", callback_data="simulate:mode:menu")],
+            [InlineKeyboardButton(text="↩️ Назад", callback_data="simulate:back")],
         ]
     )
 
@@ -97,7 +97,7 @@ def simulate_precise_results_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
             [InlineKeyboardButton(text="📈 Хотите точнее? +3 вопроса", callback_data="simulate:precise:more")],
-            [InlineKeyboardButton(text="↩️ Вернуться к выбору режима", callback_data="simulate:mode:menu")],
+            [InlineKeyboardButton(text="↩️ Назад", callback_data="simulate:back")],
         ]
     )
 

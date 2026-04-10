@@ -202,6 +202,29 @@ async def ensure_simulate_consent(callback: CallbackQuery, state: FSMContext) ->
     return False
 
 
+async def return_to_base_state(message: Message, state: FSMContext, text: str):
+    await state.clear()
+    await message.answer(text, reply_markup=persistent_main_keyboard())
+
+
+async def send_excel_and_wait_for_user(callback: CallbackQuery, state: FSMContext):
+    excel_path = find_excel_template()
+    if excel_path is None:
+        await callback.message.answer(SIMULATE_PRO_MISSING_TEXT)
+        await callback.answer("Excel-файл пока не найден", show_alert=True)
+        return
+
+    await callback.message.answer_document(
+        document=FSInputFile(excel_path),
+        caption="📥 Excel-опросник для профессиональной оценки",
+    )
+    user_id = await get_db_user_id(callback)
+    await add_event(user_id, "simulate_pro_excel_sent", excel_path.name)
+    await state.set_state(SimulateFlow.precise_wait_excel)
+    await callback.message.answer(WAIT_FILE_TEXT, reply_markup=simulate_deep_wait_keyboard())
+    await callback.answer()
+
+
 async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FSMContext, tool_name: str):
     user_id = await get_db_user_id(message_or_callback)
     await add_event(user_id, "tool_open_requested", tool_name)
@@ -437,6 +460,12 @@ async def simulate_mode_menu(callback: CallbackQuery, state: FSMContext):
     await send_simulate_mode_menu(callback, state)
 
 
+@router.callback_query(SimulateFlow.mode_select, F.data == "simulate:back")
+async def simulate_back_to_main(callback: CallbackQuery, state: FSMContext):
+    await return_to_base_state(callback.message, state, THANKS_TOOL_TEXT)
+    await callback.answer()
+
+
 @router.callback_query(SimulateFlow.mode_select, F.data == "simulate:mode:express")
 async def simulate_mode_express(callback: CallbackQuery, state: FSMContext):
     if not await ensure_simulate_consent(callback, state):
@@ -482,19 +511,8 @@ async def simulate_mode_pro(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
     await add_event(user_id, "simulate_mode_selected", "pro")
 
-    excel_path = find_excel_template()
-    if excel_path is None:
-        await callback.message.answer(SIMULATE_PRO_MISSING_TEXT)
-        await callback.answer("Excel-файл пока не найден", show_alert=True)
-        return
-
     await callback.message.answer(SIMULATE_PRO_TEXT)
-    await callback.message.answer_document(
-        document=FSInputFile(excel_path),
-        caption="📥 Excel-опросник для профессиональной оценки",
-    )
-    await add_event(user_id, "simulate_pro_excel_sent", excel_path.name)
-    await callback.answer()
+    await send_excel_and_wait_for_user(callback, state)
 
 
 @router.message(SimulateFlow.express_revenue, F.text)
@@ -788,41 +806,27 @@ async def simulate_plus3_advisory(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:download")
-async def simulate_deep_download(callback: CallbackQuery):
-    excel_path = find_excel_template()
-    if excel_path is None:
-        await callback.message.answer(SIMULATE_PRO_MISSING_TEXT)
-        await callback.answer("Excel-файл пока не найден", show_alert=True)
-        return
-
-    await callback.message.answer_document(
-        document=FSInputFile(excel_path),
-        caption="📥 Excel-опросник для профессиональной оценки",
-    )
-    await callback.message.answer(WAIT_FILE_TEXT, reply_markup=simulate_deep_wait_keyboard())
-    await callback.answer()
+async def simulate_deep_download(callback: CallbackQuery, state: FSMContext):
+    await send_excel_and_wait_for_user(callback, state)
 
 
 @router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:sent_email")
 async def simulate_deep_sent_email(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
     await add_event(user_id, "simulate_deep_sent_email")
-    await state.set_state(SimulateFlow.mode_select)
-    await callback.message.answer(THANKS_DEEP_TEXT, reply_markup=persistent_main_keyboard())
+    await return_to_base_state(callback.message, state, THANKS_DEEP_TEXT)
     await callback.answer()
 
 
 @router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:back")
 async def simulate_deep_back(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(SimulateFlow.mode_select)
-    await callback.message.answer(THANKS_TOOL_TEXT, reply_markup=persistent_main_keyboard())
+    await return_to_base_state(callback.message, state, THANKS_TOOL_TEXT)
     await callback.answer()
 
 
 @router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:back_wait")
 async def simulate_deep_back_wait(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(SimulateFlow.mode_select)
-    await callback.message.answer("Ну хорошо, ждём вас позже.", reply_markup=persistent_main_keyboard())
+    await return_to_base_state(callback.message, state, THANKS_TOOL_TEXT)
     await callback.answer()
 
 
@@ -835,8 +839,7 @@ async def simulate_wait_excel_upload(message: Message, state: FSMContext):
 
     user_id = await get_db_user_id(message)
     await add_event(user_id, "simulate_deep_excel_uploaded", document.file_name)
-    await state.set_state(SimulateFlow.mode_select)
-    await message.answer(THANKS_DEEP_TEXT, reply_markup=persistent_main_keyboard())
+    await return_to_base_state(message, state, THANKS_DEEP_TEXT)
 
 
 @router.message(SimulateFlow.precise_wait_excel)
