@@ -145,19 +145,19 @@ def simulate_plus3_standardization_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Высокая стандартизация: есть регламенты, чек-листы, единая методология",
+                    text="Высокая стандартизация",
                     callback_data="simulate:plus3:std:high",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="Средняя стандартизация: базовые стандарты есть, но много ручной работы",
+                    text="Средняя стандартизация",
                     callback_data="simulate:plus3:std:medium",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="Низкая стандартизация: процессы не описаны",
+                    text="Низкая стандартизация",
                     callback_data="simulate:plus3:std:low",
                 )
             ],

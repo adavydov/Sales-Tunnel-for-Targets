@@ -186,8 +186,8 @@ async def send_express_result(message: Message, state: FSMContext):
         "🎯 <b>Ваши результаты с Aivel:</b>\n\n"
         "Шаги расчёта через 6 месяцев и через 12 месяцев\n\n"
         "1. <b>Число высвобождаемых бухгалтеров</b>\n"
-        f"• через 6 месяцев: <b>{result['released_6']:.2f}</b>\n"
-        f"• через 12 месяцев: <b>{result['released_12']:.2f}</b>\n\n"
+        f"• через 6 месяцев: <b>{result['released_6']}</b>\n"
+        f"• через 12 месяцев: <b>{result['released_12']}</b>\n\n"
         "2. <b>Сохраняемая месячная зарплатная масса</b>\n"
         f"• через 6 месяцев: <b>{format_rub(result['payroll_saved_6'])} ₽ в месяц</b>\n"
         f"• через 12 месяцев: <b>{format_rub(result['payroll_saved_12'])} ₽ в месяц</b>\n\n"
@@ -957,7 +957,7 @@ async def simulate_contacts_skip(callback: CallbackQuery, state: FSMContext):
 async def simulate_contacts_share(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SimulateFlow.precise_contact_name)
     await callback.message.answer(
-        "Введите ваше имя или пропустите поле:",
+        "Введите ваше имя:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:name:skip"),
     )
     await callback.answer()
@@ -968,7 +968,7 @@ async def simulate_contact_name(message: Message, state: FSMContext):
     await state.update_data(contact_name=message.text.strip())
     await state.set_state(SimulateFlow.precise_contact_email)
     await message.answer(
-        "Введите ваш Email или пропустите поле:",
+        "Введите ваш Email:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:email:skip"),
     )
 
@@ -978,7 +978,7 @@ async def simulate_contact_name_skip(callback: CallbackQuery, state: FSMContext)
     await state.update_data(contact_name="")
     await state.set_state(SimulateFlow.precise_contact_email)
     await callback.message.answer(
-        "Введите ваш Email или пропустите поле:",
+        "Введите ваш Email:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:email:skip"),
     )
     await callback.answer()
@@ -989,7 +989,7 @@ async def simulate_contact_email(message: Message, state: FSMContext):
     await state.update_data(contact_email=message.text.strip())
     await state.set_state(SimulateFlow.precise_contact_phone)
     await message.answer(
-        "Введите ваш телефон или пропустите поле:",
+        "Введите ваш телефон:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:phone:skip"),
     )
 
@@ -999,7 +999,7 @@ async def simulate_contact_email_skip(callback: CallbackQuery, state: FSMContext
     await state.update_data(contact_email="")
     await state.set_state(SimulateFlow.precise_contact_phone)
     await callback.message.answer(
-        "Введите ваш телефон или пропустите поле:",
+        "Введите ваш телефон:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:phone:skip"),
     )
     await callback.answer()

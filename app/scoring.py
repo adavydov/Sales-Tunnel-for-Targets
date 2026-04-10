@@ -1,3 +1,5 @@
+from decimal import ROUND_HALF_UP, Decimal
+
 ROLE_POINTS = {
     "owner": 25,
     "partner": 22,
@@ -104,18 +106,18 @@ def calculate_express_savings(revenue_rub: int, accountants_count: int, monthly_
     }
 
 
-def calculate_express_operation_savings(accountants_count: int, monthly_salary_rub: int) -> dict[str, float]:
-    released_6 = accountants_count * 0.35
-    released_12 = accountants_count * 0.65
+def calculate_express_operation_savings(accountants_count: int, monthly_salary_rub: int) -> dict[str, int]:
+    released_6 = int((Decimal(accountants_count) * Decimal("0.35")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    released_12 = int((Decimal(accountants_count) * Decimal("0.65")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-    payroll_saved_6 = released_6 * monthly_salary_rub
-    payroll_saved_12 = released_12 * monthly_salary_rub
+    payroll_saved_6 = int(released_6 * monthly_salary_rub)
+    payroll_saved_12 = int(released_12 * monthly_salary_rub)
 
-    ai_cost_6 = payroll_saved_6 * 0.2
-    ai_cost_12 = payroll_saved_12 * 0.2
+    ai_cost_6 = int((Decimal(payroll_saved_6) * Decimal("0.2")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    ai_cost_12 = int((Decimal(payroll_saved_12) * Decimal("0.2")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-    net_6 = payroll_saved_6 - ai_cost_6
-    net_12 = payroll_saved_12 - ai_cost_12
+    net_6 = int(payroll_saved_6 - ai_cost_6)
+    net_12 = int(payroll_saved_12 - ai_cost_12)
 
     return {
         "released_6": released_6,
