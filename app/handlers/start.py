@@ -21,15 +21,15 @@ logger = logging.getLogger(__name__)
 URL_RE = re.compile(r"^(https?://)?(www\.)?[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+(/.*)?$", re.IGNORECASE)
 
 ONBOARDING_PROMO_TEXT = (
-    "🚀 <b>Добро пожаловать в AIVEL bot</b>\n\n"
-    "Это удобный ассистент для компаний, где вы сможете:\n"
-    "• получать таргетированные прогревы каждый день;\n"
-    "• быстро запускать симуляции экономии;\n"
-    "• использовать valuation-оценку для accounting firm;\n"
-    "• находить кейсы, видео и полезные материалы.\n\n"
-    "С этого момента вам доступен базовый функционал: каждый день в 14:00 будет приходить"
-    " прогрев с материалами, ссылками и обновлениями.\n\n"
-    "Сайт компании: https://aivel.ru"
+    "👋 Добро пожаловать в Aivel!\n"
+    "Мы автоматизируем до 95% бухгалтерских операций с помощью AI. "
+    "Забудьте о проблемах с наймом — фокусируйтесь на продажах и клиентах.\n\n"
+    "Что здесь:\n"
+    "📊 Новости, события, новые партнёры\n"
+    "💰 Калькулятор вашей экономии\n"
+    "📈 Оценка стоимости вашей фирмы\n"
+    "📅 Запись на встречу со специалистом\n\n"
+    "Выберите раздел в меню ниже 👇"
 )
 
 TOOL_PLACEHOLDER_TEXT = (
@@ -45,7 +45,7 @@ CONSENT_TEXT = (
     "acceptance for receive marketing communication."
 )
 
-MENU_TEXT = "Вот какие у меня есть функции:"
+MENU_TEXT = "Меню бота:"
 BOOK_MEETING_TEXT = (
     "Для организации созвона напишите нам:\n\n"
     "• Email: hello@aivel.ru\n"
@@ -196,19 +196,19 @@ async def onboarding_no_site(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(StateFilter(None), F.text == "Menu")
+@router.message(StateFilter(None), F.text == "Меню бота")
 async def open_menu(message: Message):
     user_id = await get_db_user_id(message)
     await add_event(user_id, "menu_opened")
     await message.answer(MENU_TEXT, reply_markup=menu_keyboard())
 
 
-@router.message(StateFilter(None), F.text == "Simulate Savings")
+@router.message(StateFilter(None), F.text == "Калькулятор экономии")
 async def open_simulate_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "simulate")
 
 
-@router.message(StateFilter(None), F.text == "Valuation simulator")
+@router.message(StateFilter(None), F.text == "Оценка стоимости фирмы")
 async def open_valuation_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "valuation")
 

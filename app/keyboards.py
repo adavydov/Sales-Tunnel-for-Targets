@@ -9,23 +9,23 @@ from aiogram.types import (
 def persistent_main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Menu")],
-            [KeyboardButton(text="Simulate Savings")],
-            [KeyboardButton(text="Valuation simulator")],
+            [KeyboardButton(text="Меню бота")],
+            [KeyboardButton(text="Калькулятор экономии")],
+            [KeyboardButton(text="Оценка стоимости фирмы")],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Choose an action",
+        input_field_placeholder="Выберите раздел",
     )
 
 
 def menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Book a meeting (corporate or accounting firm)", callback_data="stub:book_meeting")],
-            [InlineKeyboardButton(text="Meet us at events", callback_data="stub:events")],
-            [InlineKeyboardButton(text="Our products & services", callback_data="stub:products")],
-            [InlineKeyboardButton(text="Videos & Case studies", callback_data="stub:videos")],
+            [InlineKeyboardButton(text="Записаться на встречу", callback_data="stub:book_meeting")],
+            [InlineKeyboardButton(text="Встретиться на мероприятиях", callback_data="stub:events")],
+            [InlineKeyboardButton(text="Продукты и услуги", callback_data="stub:products")],
+            [InlineKeyboardButton(text="Видео и кейсы (скоро)", callback_data="stub:videos")],
         ]
     )
 
