@@ -18,7 +18,7 @@ from app.calendly import (
     is_slot_available,
 )
 from app.config import MEETING_TIMEZONE
-from app.db import add_event, get_tool_consent, save_profile_field, upsert_user
+from app.db import add_event, get_tool_consent, save_funnel_fields, save_profile_field, upsert_user
 from app.keyboards import (
     calendly_meeting_keyboard,
     meeting_calendar_keyboard,
@@ -222,6 +222,13 @@ async def send_express_result(message: Message, state: FSMContext):
 
     user_id = data.get("db_user_id")
     if user_id:
+        await save_funnel_fields(
+            int(user_id),
+            accountants_count=accountants,
+            avg_salary=salary,
+            express_saving_6=result["net_6"],
+            express_saving_12=result["net_12"],
+        )
         await add_event(
             int(user_id),
             "simulate_express_completed",
@@ -318,6 +325,7 @@ async def send_excel_and_wait_for_user(callback: CallbackQuery, state: FSMContex
         caption="📥 Excel-опросник для профессиональной оценки",
     )
     user_id = await get_db_user_id(callback)
+    await save_funnel_fields(user_id, file_downloaded=True)
     await add_event(user_id, "simulate_pro_excel_sent", excel_path.name)
     await state.set_state(SimulateFlow.precise_wait_excel)
     await callback.message.answer(WAIT_FILE_TEXT, reply_markup=simulate_deep_wait_keyboard())
@@ -586,6 +594,8 @@ async def meeting_email_step(message: Message, state: FSMContext):
 
     now = datetime.now(ZoneInfo(MEETING_TIMEZONE))
     await state.update_data(meeting_email=email)
+    user_id = await get_db_user_id(message)
+    await save_funnel_fields(user_id, contact_email=email)
     await state.set_state(MeetingBookingFlow.waiting_date)
     await message.answer(
         "Выберите дату созвона:",
@@ -654,7 +664,9 @@ async def meeting_slot_pick(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    await add_event(await get_db_user_id(callback), "meeting_booked", slot_dt.isoformat())
+    user_id = await get_db_user_id(callback)
+    await save_funnel_fields(user_id, meeting_booked=True)
+    await add_event(user_id, "meeting_booked", slot_dt.isoformat())
     await return_to_base_state(
         callback.message,
         state,
@@ -687,7 +699,9 @@ async def meeting_custom_time_pick(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    await add_event(await get_db_user_id(callback), "meeting_booked_custom", slot_dt.isoformat())
+    user_id = await get_db_user_id(callback)
+    await save_funnel_fields(user_id, meeting_booked=True)
+    await add_event(user_id, "meeting_booked_custom", slot_dt.isoformat())
     await return_to_base_state(
         callback.message,
         state,
@@ -783,6 +797,9 @@ async def simulate_express_accountants(message: Message, state: FSMContext):
         return
 
     await state.update_data(express_accountants=accountants)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), accountants_count=accountants)
     await state.set_state(SimulateFlow.express_salary)
     await message.answer(
         "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n"
@@ -795,6 +812,9 @@ async def simulate_express_accountants(message: Message, state: FSMContext):
 @router.callback_query(SimulateFlow.express_accountants, F.data == "simulate:express:skip:accountants")
 async def simulate_express_skip_accountants(callback: CallbackQuery, state: FSMContext):
     await state.update_data(express_accountants=DEFAULT_EXPRESS_ACCOUNTANTS)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), accountants_count=DEFAULT_EXPRESS_ACCOUNTANTS)
     await state.set_state(SimulateFlow.express_salary)
     await callback.message.answer(
         "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n"
@@ -813,12 +833,18 @@ async def simulate_express_salary(message: Message, state: FSMContext):
         return
 
     await state.update_data(express_salary=salary)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), avg_salary=salary)
     await send_express_result(message, state)
 
 
 @router.callback_query(SimulateFlow.express_salary, F.data == "simulate:express:skip:salary")
 async def simulate_express_skip_salary(callback: CallbackQuery, state: FSMContext):
     await state.update_data(express_salary=DEFAULT_EXPRESS_SALARY)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), avg_salary=DEFAULT_EXPRESS_SALARY)
     await send_express_result(callback.message, state)
     await callback.answer()
 
@@ -831,6 +857,9 @@ async def simulate_precise_clients(message: Message, state: FSMContext):
         return
 
     await state.update_data(precise_clients=clients)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), active_clients_count=clients)
     await state.set_state(SimulateFlow.precise_contacts)
     await message.answer(
         "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон)\n",
@@ -847,6 +876,9 @@ async def simulate_precise_margin(message: Message, state: FSMContext):
         return
 
     await state.update_data(precise_margin=margin)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), margin_percent=margin)
     await finalize_precise_assessment(message, state)
 
 
@@ -882,7 +914,11 @@ async def simulate_plus3_standardization(callback: CallbackQuery, state: FSMCont
         await callback.answer("Некорректный вариант", show_alert=True)
         return
 
-    await state.update_data(plus3_standardization="medium" if value == "skip" else value)
+    normalized = "medium" if value == "skip" else value
+    await state.update_data(plus3_standardization=normalized)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), standardization_level=normalized)
     await state.set_state(SimulateFlow.precise_automation)
     await callback.message.answer(
         "6️⃣ Используете ли вы сейчас какие-то инструменты автоматизации?\n\n",
@@ -899,7 +935,11 @@ async def simulate_plus3_automation(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Некорректный вариант", show_alert=True)
         return
 
-    await state.update_data(plus3_automation="partial" if value == "skip" else value)
+    normalized = "partial" if value == "skip" else value
+    await state.update_data(plus3_automation=normalized)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), automation_level=normalized)
     await state.set_state(SimulateFlow.precise_margin)
     await callback.message.answer(
         "7️⃣ Текущая валовая маржа (%)?\n",
@@ -916,7 +956,11 @@ async def simulate_plus3_advisory(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Некорректный вариант", show_alert=True)
         return
 
-    await state.update_data(plus3_advisory="10_20" if value == "skip" else value)
+    normalized = "10_20" if value == "skip" else value
+    await state.update_data(plus3_advisory=normalized)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), advisory_band=normalized)
     await state.set_state(SimulateFlow.precise_clients)
     await callback.message.answer(
         "4️⃣ Количество активных клиентов?\n",
@@ -929,6 +973,9 @@ async def simulate_plus3_advisory(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(SimulateFlow.precise_clients, F.data == "simulate:precise:clients:skip")
 async def simulate_precise_clients_skip(callback: CallbackQuery, state: FSMContext):
     await state.update_data(precise_clients=0)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), active_clients_count=0)
     await state.set_state(SimulateFlow.precise_contacts)
     await callback.message.answer(
         "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон)\n",
@@ -941,6 +988,9 @@ async def simulate_precise_clients_skip(callback: CallbackQuery, state: FSMConte
 @router.message(SimulateFlow.precise_clients, F.text.casefold() == "пропустить")
 async def simulate_precise_clients_skip_text(message: Message, state: FSMContext):
     await state.update_data(precise_clients=0)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), active_clients_count=0)
     await state.set_state(SimulateFlow.precise_contacts)
     await message.answer(
         "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон)\n",
@@ -969,7 +1019,11 @@ async def simulate_contacts_share(callback: CallbackQuery, state: FSMContext):
 
 @router.message(SimulateFlow.precise_contact_name, F.text)
 async def simulate_contact_name(message: Message, state: FSMContext):
-    await state.update_data(contact_name=message.text.strip())
+    name = message.text.strip()
+    await state.update_data(contact_name=name)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), contact_name=name)
     await state.set_state(SimulateFlow.precise_contact_email)
     await message.answer(
         "Введите ваш Email:",
@@ -980,6 +1034,9 @@ async def simulate_contact_name(message: Message, state: FSMContext):
 @router.callback_query(SimulateFlow.precise_contact_name, F.data == "simulate:contacts:name:skip")
 async def simulate_contact_name_skip(callback: CallbackQuery, state: FSMContext):
     await state.update_data(contact_name="")
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), contact_name="")
     await state.set_state(SimulateFlow.precise_contact_email)
     await callback.message.answer(
         "Введите ваш Email:",
@@ -990,7 +1047,11 @@ async def simulate_contact_name_skip(callback: CallbackQuery, state: FSMContext)
 
 @router.message(SimulateFlow.precise_contact_email, F.text)
 async def simulate_contact_email(message: Message, state: FSMContext):
-    await state.update_data(contact_email=message.text.strip())
+    email = message.text.strip()
+    await state.update_data(contact_email=email)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), contact_email=email)
     await state.set_state(SimulateFlow.precise_contact_phone)
     await message.answer(
         "Введите ваш телефон:",
@@ -1001,6 +1062,9 @@ async def simulate_contact_email(message: Message, state: FSMContext):
 @router.callback_query(SimulateFlow.precise_contact_email, F.data == "simulate:contacts:email:skip")
 async def simulate_contact_email_skip(callback: CallbackQuery, state: FSMContext):
     await state.update_data(contact_email="")
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), contact_email="")
     await state.set_state(SimulateFlow.precise_contact_phone)
     await callback.message.answer(
         "Введите ваш телефон:",
@@ -1011,7 +1075,11 @@ async def simulate_contact_email_skip(callback: CallbackQuery, state: FSMContext
 
 @router.message(SimulateFlow.precise_contact_phone, F.text)
 async def simulate_contact_phone(message: Message, state: FSMContext):
-    await state.update_data(contact_phone=message.text.strip())
+    phone = message.text.strip()
+    await state.update_data(contact_phone=phone)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), contact_phone=phone)
     data = await state.get_data()
     await state.update_data(
         precise_contacts=(
@@ -1026,6 +1094,9 @@ async def simulate_contact_phone(message: Message, state: FSMContext):
 @router.callback_query(SimulateFlow.precise_contact_phone, F.data == "simulate:contacts:phone:skip")
 async def simulate_contact_phone_skip(callback: CallbackQuery, state: FSMContext):
     await state.update_data(contact_phone="")
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), contact_phone="")
     data = await state.get_data()
     await state.update_data(
         precise_contacts=(
@@ -1040,12 +1111,18 @@ async def simulate_contact_phone_skip(callback: CallbackQuery, state: FSMContext
 @router.message(SimulateFlow.precise_margin, F.text.casefold() == "пропустить")
 async def simulate_precise_margin_skip(message: Message, state: FSMContext):
     await state.update_data(precise_margin=0)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), margin_percent=0)
     await finalize_precise_assessment(message, state)
 
 
 @router.callback_query(SimulateFlow.precise_margin, F.data == "simulate:precise:margin:skip")
 async def simulate_precise_margin_skip_callback(callback: CallbackQuery, state: FSMContext):
     await state.update_data(precise_margin=0)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), margin_percent=0)
     await finalize_precise_assessment(callback.message, state)
     await callback.answer()
 
@@ -1096,6 +1173,12 @@ async def finalize_precise_assessment(target: Message | CallbackQuery, state: FS
     )
 
     user_id = await get_db_user_id(target)
+    await save_funnel_fields(
+        user_id,
+        precise_assessment=precise_range,
+        express_saving_6=int(round(net_6)),
+        express_saving_12=int(round(net_12)),
+    )
     await add_event(
         user_id,
         "simulate_precise_completed",
@@ -1131,6 +1214,9 @@ async def simulate_post_growth(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.update_data(post_growth=value)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), growth_band=value)
     await state.set_state(SimulateFlow.precise_mna)
     await callback.message.answer(
         "Рассматриваете ли вы M&A / привлечение инвестиций?",
@@ -1147,6 +1233,9 @@ async def simulate_post_mna(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.update_data(post_mna=value)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_funnel_fields(int(user_id), mna_interest=value)
     await state.set_state(SimulateFlow.precise_wait_excel)
     await callback.message.answer(
         "🎯 Серьёзно рассматриваете внедрение? Загрузите Excel — получите полный бизнес-кейс от нашей команды.",
@@ -1163,6 +1252,7 @@ async def simulate_deep_download(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:sent_email")
 async def simulate_deep_sent_email(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
+    await save_funnel_fields(user_id, uploaded_file_link="sent_to_success@aivel.ai")
     await add_event(user_id, "simulate_deep_sent_email")
     await return_to_base_state(callback.message, state, THANKS_DEEP_TEXT)
     await callback.answer()
@@ -1188,6 +1278,11 @@ async def simulate_wait_excel_upload(message: Message, state: FSMContext):
         return
 
     user_id = await get_db_user_id(message)
+    await save_funnel_fields(
+        user_id,
+        file_downloaded=True,
+        uploaded_file_link=f"telegram_file_id:{document.file_id}",
+    )
     await add_event(user_id, "simulate_deep_excel_uploaded", document.file_name)
     await return_to_base_state(message, state, THANKS_DEEP_TEXT)
 

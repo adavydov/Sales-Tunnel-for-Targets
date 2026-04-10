@@ -25,6 +25,32 @@ ALLOWED_PROFILE_FIELDS = {
     "simulate_consent",
     "valuation_consent",
 }
+ALLOWED_FUNNEL_FIELDS = {
+    "last_connection_at",
+    "contact_name",
+    "contact_phone",
+    "contact_email",
+    "accountants_count",
+    "avg_salary",
+    "express_saving_6",
+    "express_saving_12",
+    "meeting_booked",
+    "advisory_band",
+    "active_clients_count",
+    "standardization_level",
+    "automation_level",
+    "precise_assessment",
+    "margin_percent",
+    "growth_band",
+    "mna_interest",
+    "file_downloaded",
+    "uploaded_file_link",
+}
+ALLOWED_STANDARDIZATION = {"high", "medium", "low"}
+ALLOWED_AUTOMATION = {"none", "partial", "systems"}
+ALLOWED_ADVISORY = {"lt10", "10_20", "gt20"}
+ALLOWED_GROWTH = {"none", "normal", "fast"}
+ALLOWED_MNA = {"yes", "no"}
 
 
 
@@ -139,6 +165,22 @@ async def init_db():
                     company_website TEXT,
                     simulate_consent TEXT,
                     valuation_consent TEXT,
+                    last_connection_at TIMESTAMP,
+                    accountants_count INTEGER,
+                    avg_salary INTEGER,
+                    express_saving_6 BIGINT,
+                    express_saving_12 BIGINT,
+                    meeting_booked BOOLEAN DEFAULT FALSE,
+                    advisory_band TEXT CHECK (advisory_band IN ('lt10', '10_20', 'gt20')),
+                    active_clients_count INTEGER,
+                    standardization_level TEXT CHECK (standardization_level IN ('high', 'medium', 'low')),
+                    automation_level TEXT CHECK (automation_level IN ('none', 'partial', 'systems')),
+                    precise_assessment TEXT,
+                    margin_percent INTEGER,
+                    growth_band TEXT CHECK (growth_band IN ('none', 'normal', 'fast')),
+                    mna_interest TEXT CHECK (mna_interest IN ('yes', 'no')),
+                    file_downloaded BOOLEAN DEFAULT FALSE,
+                    uploaded_file_link TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -171,6 +213,37 @@ async def init_db():
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS company_website TEXT;""")
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS simulate_consent TEXT;""")
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_consent TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS last_connection_at TIMESTAMP;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS accountants_count INTEGER;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS avg_salary INTEGER;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS express_saving_6 BIGINT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS express_saving_12 BIGINT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS meeting_booked BOOLEAN DEFAULT FALSE;""")
+            await cur.execute(
+                """ALTER TABLE users ADD COLUMN IF NOT EXISTS advisory_band TEXT
+                   CHECK (advisory_band IN ('lt10', '10_20', 'gt20'));"""
+            )
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS active_clients_count INTEGER;""")
+            await cur.execute(
+                """ALTER TABLE users ADD COLUMN IF NOT EXISTS standardization_level TEXT
+                   CHECK (standardization_level IN ('high', 'medium', 'low'));"""
+            )
+            await cur.execute(
+                """ALTER TABLE users ADD COLUMN IF NOT EXISTS automation_level TEXT
+                   CHECK (automation_level IN ('none', 'partial', 'systems'));"""
+            )
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS precise_assessment TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS margin_percent INTEGER;""")
+            await cur.execute(
+                """ALTER TABLE users ADD COLUMN IF NOT EXISTS growth_band TEXT
+                   CHECK (growth_band IN ('none', 'normal', 'fast'));"""
+            )
+            await cur.execute(
+                """ALTER TABLE users ADD COLUMN IF NOT EXISTS mna_interest TEXT
+                   CHECK (mna_interest IN ('yes', 'no'));"""
+            )
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS file_downloaded BOOLEAN DEFAULT FALSE;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS uploaded_file_link TEXT;""")
 
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_email;""")
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_telegram;""")
@@ -261,12 +334,13 @@ async def upsert_user(
     try:
         async with conn.cursor() as cur:
             await cur.execute("""
-                INSERT INTO users (telegram_id, username, first_name, last_name)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO users (telegram_id, username, first_name, last_name, last_connection_at)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (telegram_id) DO UPDATE SET
                     username = EXCLUDED.username,
                     first_name = EXCLUDED.first_name,
                     last_name = EXCLUDED.last_name,
+                    last_connection_at = CURRENT_TIMESTAMP,
                     updated_at = CURRENT_TIMESTAMP
                 RETURNING id;
             """, (telegram_id, username, first_name, last_name))
@@ -354,6 +428,49 @@ async def save_profile_field(user_id: int, field_name: str, value: str):
                 (value, user_id),
             )
 
+        await conn.commit()
+    finally:
+        await conn.close()
+
+
+async def save_funnel_fields(user_id: int, **fields):
+    if not fields:
+        return
+
+    unknown = set(fields) - ALLOWED_FUNNEL_FIELDS
+    if unknown:
+        raise ValueError(f"Недопустимые funnel-поля: {', '.join(sorted(unknown))}")
+
+    if "standardization_level" in fields and fields["standardization_level"] not in ALLOWED_STANDARDIZATION:
+        raise ValueError(f"Недопустимая стандартизация: {fields['standardization_level']}")
+    if "automation_level" in fields and fields["automation_level"] not in ALLOWED_AUTOMATION:
+        raise ValueError(f"Недопустимая автоматизация: {fields['automation_level']}")
+    if "advisory_band" in fields and fields["advisory_band"] not in ALLOWED_ADVISORY:
+        raise ValueError(f"Недопустимый advisory: {fields['advisory_band']}")
+    if "growth_band" in fields and fields["growth_band"] not in ALLOWED_GROWTH:
+        raise ValueError(f"Недопустимый рост: {fields['growth_band']}")
+    if "mna_interest" in fields and fields["mna_interest"] not in ALLOWED_MNA:
+        raise ValueError(f"Недопустимый M&A: {fields['mna_interest']}")
+
+    set_parts = []
+    values = []
+    for field_name, value in fields.items():
+        set_parts.append(f"{field_name} = %s")
+        values.append(value)
+    set_parts.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(user_id)
+
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                f"""
+                UPDATE users
+                SET {", ".join(set_parts)}
+                WHERE id = %s;
+                """,
+                values,
+            )
         await conn.commit()
     finally:
         await conn.close()
