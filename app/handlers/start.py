@@ -33,9 +33,8 @@ from app.keyboards import (
     simulate_plus3_advisory_keyboard,
     simulate_plus3_automation_keyboard,
     simulate_plus3_standardization_keyboard,
-    simulate_precise_complex_keyboard,
-    simulate_precise_ops_keyboard,
-    simulate_precise_results_keyboard,
+    simulate_growth_keyboard,
+    simulate_mna_keyboard,
     simulate_results_keyboard,
     simulate_skip_question_keyboard,
     tool_consent_keyboard,
@@ -43,8 +42,7 @@ from app.keyboards import (
 )
 from app.scoring import (
     calculate_express_operation_savings,
-    calculate_precise_savings,
-    refine_precise_savings_with_plus3,
+    calculate_precise_savings_from_express,
 )
 from app.states import MeetingBookingFlow, OnboardingFlow, SimulateFlow, ToolConsentFlow
 
@@ -101,16 +99,6 @@ SIMULATE_PRO_MISSING_TEXT = (
     "Не удалось найти Excel-файл в проекте.\n"
     "Пожалуйста, добавьте .xlsx в репозиторий (например, в app/assets/) и попробуйте снова."
 )
-OPS_SHARE_LABELS = {
-    "40_50": "40-50%",
-    "50_70": "50-70%",
-    "70_plus": "70%+",
-}
-COMPLEX_CASES_LABELS = {
-    "many": "Да, много (>30%)",
-    "some": "Некоторые (10–30%)",
-    "few": "Мало (<10%)",
-}
 STANDARDIZATION_LABELS = {
     "high": "Высокая",
     "medium": "Средняя",
@@ -119,14 +107,12 @@ STANDARDIZATION_LABELS = {
 AUTOMATION_LABELS = {
     "none": "Нет, всё вручную",
     "partial": "Частично",
-    "crm": "Есть CRM/системы",
-    "rpa": "Продвинутая (RPA/боты)",
+    "systems": "Да, есть системы",
 }
 ADVISORY_LABELS = {
-    "lt5": "Менее 5%",
-    "5_15": "5-15%",
-    "15_25": "15-25%",
-    "gt25": "Более 25%",
+    "lt10": "Менее 10%",
+    "10_20": "10-20%",
+    "gt20": "Более 20%",
 }
 WAIT_FILE_TEXT = (
     "Ожидаем ваш файл.\n\n"
@@ -726,7 +712,7 @@ async def simulate_mode_precise(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SimulateFlow.precise_revenue)
     await callback.message.answer(
         "✅ <b>Точная оценка</b>\n\n"
-        "Ответьте на 7 вопросов.\n\n"
+        "Ответьте на 5 вопросов.\n\n"
         "1️⃣ Годовая выручка (₽)?\n<i>Например: 50000000</i>",
         parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove(),
@@ -826,11 +812,15 @@ async def simulate_precise_salary(message: Message, state: FSMContext):
         return
 
     await state.update_data(precise_salary=salary)
-    await state.set_state(SimulateFlow.precise_clients)
-    await message.answer("4️⃣ Количество активных клиентов?\n<i>Например: 120</i>", parse_mode="HTML")
+    await state.set_state(SimulateFlow.precise_advisory)
+    await message.answer(
+        "3️⃣ Какой % клиентов требует нестандартных консультаций / advisory работы?\n"
+        "Выберите вариант:",
+        reply_markup=simulate_plus3_advisory_keyboard(),
+    )
 
 
-@router.message(SimulateFlow.precise_clients, F.text)
+@router.message(SimulateFlow.precise_clients, F.text & (F.text.casefold() != "пропустить"))
 async def simulate_precise_clients(message: Message, state: FSMContext):
     clients = parse_positive_int(message.text.strip())
     if clients is None:
@@ -838,11 +828,17 @@ async def simulate_precise_clients(message: Message, state: FSMContext):
         return
 
     await state.update_data(precise_clients=clients)
-    await state.set_state(SimulateFlow.precise_margin)
-    await message.answer("5️⃣ Текущая валовая маржа (%)?\n<i>Например: 35</i>", parse_mode="HTML")
+    await state.set_state(SimulateFlow.precise_standardization)
+    await message.answer(
+        "5️⃣ Насколько стандартизированы ваши процессы?\n"
+        "<i>При высокой стандартизации вы достигаете результатов на 30% быстрее.</i>\n\n"
+        "Выберите вариант:",
+        parse_mode="HTML",
+        reply_markup=simulate_plus3_standardization_keyboard(),
+    )
 
 
-@router.message(SimulateFlow.precise_margin, F.text)
+@router.message(SimulateFlow.precise_margin, F.text & (F.text.casefold() != "пропустить"))
 async def simulate_precise_margin(message: Message, state: FSMContext):
     margin = parse_positive_int(message.text.strip())
     if margin is None or margin > 100:
@@ -850,103 +846,23 @@ async def simulate_precise_margin(message: Message, state: FSMContext):
         return
 
     await state.update_data(precise_margin=margin)
-    await state.set_state(SimulateFlow.precise_ops_share)
-    await message.answer(
-        "6️⃣ Какой % работы занимают операции:\n"
-        "• Обработка входящих запросов и документов\n"
-        "• Первичные документы\n"
-        "• Акты сверки\n"
-        "• Работа с банк-клиентом\n\n"
-        "Выберите вариант:",
-        reply_markup=simulate_precise_ops_keyboard(),
-    )
+    await finalize_precise_assessment(message, state)
 
 
-@router.callback_query(SimulateFlow.precise_ops_share, F.data.startswith("simulate:precise:ops:"))
-async def simulate_precise_ops_share(callback: CallbackQuery, state: FSMContext):
-    ops_share = callback.data.split(":")[-1]
-    if ops_share not in OPS_SHARE_LABELS:
-        await callback.answer("Некорректный вариант", show_alert=True)
-        return
-
-    await state.update_data(precise_ops_share=ops_share)
-    await state.set_state(SimulateFlow.precise_complex_cases)
-    await callback.message.answer(
-        "7️⃣ Есть ли у вас клиенты со сложными кейсами?\n"
-        "<i>Это снижает процент автоматизации для сложных задач.</i>\n\n"
-        "Выберите вариант:",
-        parse_mode="HTML",
-        reply_markup=simulate_precise_complex_keyboard(),
-    )
-    await callback.answer()
-
-
-@router.callback_query(SimulateFlow.precise_complex_cases, F.data.startswith("simulate:precise:complex:"))
-async def simulate_precise_complex_cases(callback: CallbackQuery, state: FSMContext):
-    complex_cases = callback.data.split(":")[-1]
-    if complex_cases not in COMPLEX_CASES_LABELS:
-        await callback.answer("Некорректный вариант", show_alert=True)
-        return
-
-    await state.update_data(precise_complex_cases=complex_cases)
-    data = await state.get_data()
-    result = calculate_precise_savings(
-        revenue_rub=int(data["precise_revenue"]),
-        accountants_count=int(data["precise_accountants"]),
-        monthly_salary_rub=int(data["precise_salary"]),
-        clients_count=int(data["precise_clients"]),
-        gross_margin_pct=int(data["precise_margin"]),
-        ops_share_band=str(data["precise_ops_share"]),
-        complex_cases_band=complex_cases,
-    )
-
-    phase1 = format_mln_range(result["phase1_min_rub"], result["phase1_max_rub"]).replace("/год", "")
-    phase2 = format_mln_range(result["phase2_min_rub"], result["phase2_max_rub"]).replace("/год", "")
-    future = format_mln_range(result["future_min_rub"], result["future_max_rub"]).replace("/год", "")
-
-    result_text = (
-        "🎯 <b>Ваши результаты с Aivel:</b>\n"
-        f"Фаза 1 (6 мес): <b>{phase1} экономии</b>\n"
-        f"Фаза 2 (18 мес): <b>{phase2} экономии</b>\n"
-        f"Будущий потенциал: <b>{future}</b>\n\n"
-        "Это быстрая прикидка экономики на основе ваших процессов."
-    )
-
-    user_id = await get_db_user_id(callback)
-    await add_event(
-        user_id,
-        "simulate_precise_completed",
-        (
-            f"revenue={data['precise_revenue']};accountants={data['precise_accountants']};"
-            f"salary={data['precise_salary']};clients={data['precise_clients']};"
-            f"margin={data['precise_margin']};ops={data['precise_ops_share']};complex={complex_cases}"
-        ),
-    )
-
-    await state.set_state(SimulateFlow.mode_select)
-    await callback.message.answer(result_text, parse_mode="HTML", reply_markup=simulate_precise_results_keyboard())
-    await callback.answer()
-
-
-@router.callback_query(SimulateFlow.mode_select, F.data == "simulate:precise:more")
+@router.callback_query(SimulateFlow.mode_select, F.data.in_({"simulate:precise:more", "simulate:precise:more5"}))
 async def simulate_precise_more(callback: CallbackQuery, state: FSMContext):
     if not await ensure_simulate_consent(callback, state):
         return
 
-    await state.set_state(SimulateFlow.precise_standardization)
+    await state.set_state(SimulateFlow.precise_revenue)
     await callback.message.answer(
-        "8️⃣ Насколько стандартизированы ваши процессы?\n"
-        "<i>При высокой стандартизации вы достигнете результатов на 30% быстрее.</i>\n\n"
-        "Выберите вариант:",
+        "✅ <b>Точная оценка</b>\n\n"
+        "Ответьте на 5 вопросов.\n\n"
+        "1️⃣ Годовая выручка (₽)?\n<i>Например: 50000000</i>",
         parse_mode="HTML",
-        reply_markup=simulate_plus3_standardization_keyboard(),
+        reply_markup=ReplyKeyboardRemove(),
     )
     await callback.answer()
-
-
-@router.callback_query(SimulateFlow.mode_select, F.data == "simulate:precise:more5")
-async def simulate_precise_more5(callback: CallbackQuery):
-    await callback.answer("Блок «+5 вопросов» подключим следующим этапом.", show_alert=True)
 
 
 @router.callback_query(SimulateFlow.precise_standardization, F.data.startswith("simulate:plus3:std:"))
@@ -959,8 +875,7 @@ async def simulate_plus3_standardization(callback: CallbackQuery, state: FSMCont
     await state.update_data(plus3_standardization=value)
     await state.set_state(SimulateFlow.precise_automation)
     await callback.message.answer(
-        "9️⃣ Используете ли вы сейчас какие-то инструменты автоматизации?\n"
-        "<i>У вас уже есть CRM — интеграция займёт 3 месяца вместо 5.</i>\n\n"
+        "6️⃣ Используете ли вы сейчас какие-то инструменты автоматизации?\n\n"
         "Выберите вариант:",
         parse_mode="HTML",
         reply_markup=simulate_plus3_automation_keyboard(),
@@ -976,11 +891,11 @@ async def simulate_plus3_automation(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.update_data(plus3_automation=value)
-    await state.set_state(SimulateFlow.precise_advisory)
+    await state.set_state(SimulateFlow.precise_margin)
     await callback.message.answer(
-        "🔟 Какой % клиентов требует нестандартных консультаций / advisory работы?\n"
-        "Выберите вариант:",
-        reply_markup=simulate_plus3_advisory_keyboard(),
+        "7️⃣ Текущая валовая маржа (%)?\n<i>Например: 35</i>\n\n"
+        "Можно пропустить вопрос.",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -988,41 +903,120 @@ async def simulate_plus3_automation(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(SimulateFlow.precise_advisory, F.data.startswith("simulate:plus3:advisory:"))
 async def simulate_plus3_advisory(callback: CallbackQuery, state: FSMContext):
     value = callback.data.split(":")[-1]
-    if value not in ADVISORY_LABELS:
+    if value != "skip" and value not in ADVISORY_LABELS:
         await callback.answer("Некорректный вариант", show_alert=True)
         return
 
-    data = await state.get_data()
-    base_result = calculate_precise_savings(
-        revenue_rub=int(data["precise_revenue"]),
-        accountants_count=int(data["precise_accountants"]),
-        monthly_salary_rub=int(data["precise_salary"]),
-        clients_count=int(data["precise_clients"]),
-        gross_margin_pct=int(data["precise_margin"]),
-        ops_share_band=str(data["precise_ops_share"]),
-        complex_cases_band=str(data["precise_complex_cases"]) if "precise_complex_cases" in data else "some",
-    )
-    refined = refine_precise_savings_with_plus3(
-        base_result,
-        standardization_band=str(data["plus3_standardization"]),
-        automation_band=str(data["plus3_automation"]),
-        advisory_band=value,
-    )
-
-    phase1 = format_mln_range(refined["phase1_min_rub"], refined["phase1_max_rub"]).replace("/год", "")
-    phase2 = format_mln_range(refined["phase2_min_rub"], refined["phase2_max_rub"]).replace("/год", "")
-    future = format_mln_range(refined["future_min_rub"], refined["future_max_rub"]).replace("/год", "")
-
-    await state.update_data(plus3_advisory=value)
-    await state.set_state(SimulateFlow.precise_wait_excel)
-
+    await state.update_data(plus3_advisory="10_20" if value == "skip" else value)
+    await state.set_state(SimulateFlow.precise_clients)
     await callback.message.answer(
-        "🎯 <b>Ваши результаты с Aivel:</b>\n"
-        f"Фаза 1 (6 мес): <b>{phase1} экономии</b>\n"
-        f"Фаза 2 (18 мес): <b>{phase2} экономии</b>\n"
-        f"Будущий потенциал: <b>{future}</b>\n\n"
-        "🎯 Серьёзно рассматриваете внедрение? Загрузите Excel — получите полный бизнес-кейс от нашей команды.",
+        "4️⃣ Количество активных клиентов?\n"
+        "<i>Например: 120</i>\n\n"
+        "Можно пропустить вопрос — напишите «пропустить».",
         parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.message(SimulateFlow.precise_clients, F.text.casefold() == "пропустить")
+async def simulate_precise_clients_skip(message: Message, state: FSMContext):
+    await state.update_data(precise_clients=0)
+    await state.set_state(SimulateFlow.precise_standardization)
+    await message.answer(
+        "5️⃣ Насколько стандартизированы ваши процессы?\n"
+        "<i>При высокой стандартизации вы достигаете результатов на 30% быстрее.</i>\n\n"
+        "Выберите вариант:",
+        parse_mode="HTML",
+        reply_markup=simulate_plus3_standardization_keyboard(),
+    )
+
+
+@router.message(SimulateFlow.precise_margin, F.text.casefold() == "пропустить")
+async def simulate_precise_margin_skip(message: Message, state: FSMContext):
+    await state.update_data(precise_margin=0)
+    await finalize_precise_assessment(message, state)
+
+
+async def finalize_precise_assessment(target: Message | CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    express_result = calculate_express_operation_savings(
+        int(data["precise_accountants"]),
+        int(data["precise_salary"]),
+    )
+    precise_result = calculate_precise_savings_from_express(
+        express_result=express_result,
+        standardization_band=str(data.get("plus3_standardization", "medium")),
+        automation_band=str(data.get("plus3_automation", "partial")),
+        advisory_band=str(data.get("plus3_advisory", "10_20")),
+    )
+
+    precise_range = (
+        f"{format_rub(precise_result['precise_min_rub'])} – {format_rub(precise_result['precise_max_rub'])} ₽/мес"
+    )
+    text = (
+        "🎯 <b>Ваши результаты с Aivel:</b>\n\n"
+        "Спасибо — на основе ваших ответов мы уточнили базовую оценку и рассчитали более точный потенциал "
+        "экономии с учётом специфики именно вашей фирмы.\n\n"
+        f"Точная экономия: <b>{precise_range}</b>\n"
+        f"K = {precise_result['k']:.2f}\n"
+        "Точная экономия = Экспресс-экономия × K"
+    )
+
+    user_id = await get_db_user_id(target)
+    await add_event(
+        user_id,
+        "simulate_precise_completed",
+        (
+            f"revenue={data.get('precise_revenue', 0)};accountants={data.get('precise_accountants', 0)};"
+            f"salary={data.get('precise_salary', 0)};clients={data.get('precise_clients', 0)};"
+            f"margin={data.get('precise_margin', 0)};std={data.get('plus3_standardization', 'medium')};"
+            f"auto={data.get('plus3_automation', 'partial')};advisory={data.get('plus3_advisory', '10_20')};"
+            f"k={precise_result['k']:.4f};range={precise_range}"
+        ),
+    )
+
+    await state.set_state(SimulateFlow.precise_growth)
+    if isinstance(target, CallbackQuery):
+        await target.message.answer(text, parse_mode="HTML")
+        await target.message.answer(
+            "Планируете ли вы рост в ближайшие 12-24 месяца?\nВыберите вариант ответа:",
+            reply_markup=simulate_growth_keyboard(),
+        )
+    else:
+        await target.answer(text, parse_mode="HTML")
+        await target.answer(
+            "Планируете ли вы рост в ближайшие 12-24 месяца?\nВыберите вариант ответа:",
+            reply_markup=simulate_growth_keyboard(),
+        )
+
+
+@router.callback_query(SimulateFlow.precise_growth, F.data.startswith("simulate:post:growth:"))
+async def simulate_post_growth(callback: CallbackQuery, state: FSMContext):
+    value = callback.data.split(":")[-1]
+    if value not in {"none", "normal", "fast", "skip"}:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    await state.update_data(post_growth=value)
+    await state.set_state(SimulateFlow.precise_mna)
+    await callback.message.answer(
+        "Рассматриваете ли вы M&A / привлечение инвестиций?\nВыберите вариант ответа:",
+        reply_markup=simulate_mna_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_mna, F.data.startswith("simulate:post:mna:"))
+async def simulate_post_mna(callback: CallbackQuery, state: FSMContext):
+    value = callback.data.split(":")[-1]
+    if value not in {"yes", "no", "skip"}:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    await state.update_data(post_mna=value)
+    await state.set_state(SimulateFlow.precise_wait_excel)
+    await callback.message.answer(
+        "🎯 Серьёзно рассматриваете внедрение? Загрузите Excel — получите полный бизнес-кейс от нашей команды.",
         reply_markup=simulate_deep_assessment_keyboard(),
     )
     await callback.answer()
