@@ -79,13 +79,13 @@ def _request(method: str, path: str, *, query: dict | None = None, body: dict | 
         raise CalendlyRequestError(f"Calendly connection error: {exc}") from exc
 
 
-def _resolve_event_type_uri() -> str:
+def _resolve_event_type() -> dict[str, str | None]:
     if not CALENDLY_EVENT_TYPE_URI:
         raise CalendlyNotConfiguredError("CALENDLY_EVENT_TYPE_URI is missing.")
 
     raw_value = CALENDLY_EVENT_TYPE_URI.strip()
     if raw_value.startswith(EVENT_TYPE_API_PREFIX):
-        return raw_value
+        return {"uri": raw_value, "location_kind": None}
 
     normalized = _normalize_url(raw_value)
     if "calendly.com/" not in normalized:
@@ -106,7 +106,9 @@ def _resolve_event_type_uri() -> str:
         if not scheduling_url or not event_uri:
             continue
         if _normalize_url(scheduling_url) == normalized:
-            return event_uri
+            locations = item.get("locations") or []
+            location_kind = locations[0].get("kind") if locations and isinstance(locations[0], dict) else None
+            return {"uri": event_uri, "location_kind": location_kind}
 
     raise CalendlyRequestError(
         "Не удалось сопоставить CALENDLY_EVENT_TYPE_URI с event type. "
@@ -119,7 +121,7 @@ def get_available_hour_slots(target_date: date) -> list[datetime]:
     start_local = datetime.combine(target_date, time(9, 0), tzinfo=tz)
     end_local = datetime.combine(target_date, time(22, 0), tzinfo=tz)
 
-    event_type_uri = _resolve_event_type_uri()
+    event_type_uri = str(_resolve_event_type()["uri"])
     response = _request(
         "GET",
         "/event_type_available_times",
@@ -158,7 +160,8 @@ def is_slot_available(slot_dt_local: datetime) -> bool:
 
 
 def book_slot(slot_dt_local: datetime, invitee_name: str, invitee_email: str) -> CalendlyBookingResult:
-    event_type_uri = _resolve_event_type_uri()
+    event_type = _resolve_event_type()
+    event_type_uri = str(event_type["uri"])
     body = {
         "event_type": event_type_uri,
         "start_time": slot_dt_local.astimezone(ZoneInfo("UTC")).isoformat().replace("+00:00", "Z"),
@@ -168,6 +171,9 @@ def book_slot(slot_dt_local: datetime, invitee_name: str, invitee_email: str) ->
             "timezone": MEETING_TIMEZONE,
         },
     }
+    location_kind = event_type.get("location_kind")
+    if location_kind:
+        body["location_configuration"] = {"kind": location_kind}
     response = _request("POST", "/invitees", body=body)
     resource = response.get("resource", {})
     return CalendlyBookingResult(
