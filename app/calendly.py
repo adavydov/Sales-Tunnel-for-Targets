@@ -37,6 +37,8 @@ def _headers() -> dict[str, str]:
     return {
         "Authorization": f"Bearer {CALENDLY_API_TOKEN}",
         "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "AivelBot/1.0 (+https://aivel.ru)",
     }
 
 
@@ -54,6 +56,12 @@ def _request(method: str, path: str, *, query: dict | None = None, body: dict | 
             return json.loads(payload) if payload else {}
     except HTTPError as exc:
         details = exc.read().decode("utf-8")
+        if exc.code == 403 and "1010" in details:
+            raise CalendlyRequestError(
+                "Calendly вернул 403 (code 1010). Обычно это блокировка Cloudflare/WAF. "
+                "Проверьте, что запрос идёт к api.calendly.com, у токена есть нужные scope, "
+                "и попробуйте запрос с другого IP/VPN."
+            ) from exc
         raise CalendlyRequestError(f"Calendly HTTP {exc.code}: {details}") from exc
     except URLError as exc:
         raise CalendlyRequestError(f"Calendly connection error: {exc}") from exc
