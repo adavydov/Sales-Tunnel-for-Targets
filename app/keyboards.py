@@ -1,3 +1,6 @@
+import calendar
+from datetime import date, datetime
+
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -148,5 +151,72 @@ def simulate_deep_wait_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="✅ Отправил по почте", callback_data="simulate:deep:sent_email")],
             [InlineKeyboardButton(text="↩️ Назад", callback_data="simulate:deep:back_wait")],
+        ]
+    )
+
+
+def meeting_calendar_keyboard(year: int, month: int) -> InlineKeyboardMarkup:
+    cal = calendar.Calendar(firstweekday=0)
+    month_days = cal.monthdayscalendar(year, month)
+    month_name = datetime(year, month, 1).strftime("%B %Y")
+
+    inline_keyboard = [[InlineKeyboardButton(text=month_name, callback_data="meeting:noop")]]
+    inline_keyboard.append(
+        [InlineKeyboardButton(text=day, callback_data="meeting:noop") for day in ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]]
+    )
+
+    today = date.today()
+    for week in month_days:
+        row = []
+        for d in week:
+            if d == 0:
+                row.append(InlineKeyboardButton(text=" ", callback_data="meeting:noop"))
+                continue
+            selected = date(year, month, d)
+            if selected < today:
+                row.append(InlineKeyboardButton(text="·", callback_data="meeting:noop"))
+            else:
+                row.append(
+                    InlineKeyboardButton(
+                        text=str(d),
+                        callback_data=f"meeting:date:pick:{selected.isoformat()}",
+                    )
+                )
+        inline_keyboard.append(row)
+
+    prev_month = month - 1 if month > 1 else 12
+    prev_year = year if month > 1 else year - 1
+    next_month = month + 1 if month < 12 else 1
+    next_year = year if month < 12 else year + 1
+    inline_keyboard.append(
+        [
+            InlineKeyboardButton(text="◀️", callback_data=f"meeting:date:nav:{prev_year}-{prev_month:02d}"),
+            InlineKeyboardButton(text="Назад", callback_data="meeting:back"),
+            InlineKeyboardButton(text="▶️", callback_data=f"meeting:date:nav:{next_year}-{next_month:02d}"),
+        ]
+    )
+
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def meeting_slots_keyboard(slot_values: list[str]) -> InlineKeyboardMarkup:
+    inline_keyboard = [[InlineKeyboardButton(text=slot, callback_data=f"meeting:slot:{slot}")] for slot in slot_values]
+    inline_keyboard.append([InlineKeyboardButton(text="Другое время", callback_data="meeting:slot:other")])
+    inline_keyboard.append([InlineKeyboardButton(text="Назад", callback_data="meeting:back")])
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def meeting_custom_time_keyboard() -> InlineKeyboardMarkup:
+    rows = []
+    for hour in range(9, 22):
+        rows.append([InlineKeyboardButton(text=f"{hour:02d}:00", callback_data=f"meeting:time:{hour:02d}:00")])
+    rows.append([InlineKeyboardButton(text="Назад", callback_data="meeting:back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def meeting_waiting_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Назад", callback_data="meeting:back")],
         ]
     )

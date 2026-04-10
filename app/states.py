@@ -26,3 +26,9 @@ class SimulateFlow(StatesGroup):
     precise_automation = State()
     precise_advisory = State()
     precise_wait_excel = State()
+
+
+class MeetingBookingFlow(StatesGroup):
+    waiting_email = State()
+    waiting_date = State()
+    waiting_custom_time = State()

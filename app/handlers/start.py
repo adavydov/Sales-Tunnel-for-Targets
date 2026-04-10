@@ -1,14 +1,29 @@
 import logging
 import re
+from datetime import date, datetime, time
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, FSInputFile, Message, ReplyKeyboardRemove
 
+from app.calendly import (
+    CalendlyNotConfiguredError,
+    CalendlyRequestError,
+    book_slot,
+    get_available_hour_slots,
+    is_configured as calendly_is_configured,
+    is_slot_available,
+)
+from app.config import MEETING_TIMEZONE
 from app.db import add_event, get_tool_consent, save_profile_field, upsert_user
 from app.keyboards import (
+    meeting_calendar_keyboard,
+    meeting_custom_time_keyboard,
+    meeting_slots_keyboard,
+    meeting_waiting_keyboard,
     menu_keyboard,
     persistent_main_keyboard,
     simulate_deep_assessment_keyboard,
@@ -29,7 +44,7 @@ from app.scoring import (
     calculate_precise_savings,
     refine_precise_savings_with_plus3,
 )
-from app.states import OnboardingFlow, SimulateFlow, ToolConsentFlow
+from app.states import MeetingBookingFlow, OnboardingFlow, SimulateFlow, ToolConsentFlow
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -63,12 +78,7 @@ CONSENT_TEXT = (
 )
 
 MENU_TEXT = "Меню бота:"
-BOOK_MEETING_TEXT = (
-    "Для организации созвона напишите нам:\n\n"
-    "• Email: hello@aivel.ru\n"
-    "• Telegram: @aivel_ai\n"
-    "• Website: https://aivel.ru"
-)
+BOOK_MEETING_TEXT = "Давайте запишем вас на встречу в Calendly."
 SIMULATE_MODE_TEXT = (
     "💰 <b>Калькулятор экономии с Aivel</b>\n\n"
     "Выберите уровень детализации расчёта:\n\n"
@@ -124,6 +134,7 @@ WAIT_FILE_TEXT = (
 )
 THANKS_DEEP_TEXT = "Спасибо! С вами свяжутся в течение 2 рабочих дней."
 THANKS_TOOL_TEXT = "Спасибо, что воспользовались нашим инструментом, надеемся он оказался полезным."
+MEETING_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -205,6 +216,28 @@ async def ensure_simulate_consent(callback: CallbackQuery, state: FSMContext) ->
 async def return_to_base_state(message: Message, state: FSMContext, text: str):
     await state.clear()
     await message.answer(text, reply_markup=persistent_main_keyboard())
+
+
+async def start_meeting_booking(message: Message, state: FSMContext):
+    if not calendly_is_configured():
+        await message.answer(
+            "Calendly пока не настроен. Проверьте CALENDLY_API_TOKEN и CALENDLY_EVENT_TYPE_URI.",
+            reply_markup=persistent_main_keyboard(),
+        )
+        await state.clear()
+        return
+
+    await state.clear()
+    await state.set_state(MeetingBookingFlow.waiting_email)
+    await message.answer(
+        "📅 Запись на встречу через Calendly.\n\n"
+        "Отправьте, пожалуйста, ваш email, чтобы мы могли забронировать слот.",
+        reply_markup=meeting_waiting_keyboard(),
+    )
+
+
+def format_slot_label(slot_dt: datetime) -> str:
+    return slot_dt.strftime("%H:%M")
 
 
 async def send_excel_and_wait_for_user(callback: CallbackQuery, state: FSMContext):
@@ -445,8 +478,151 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "stub:book_meeting")
-async def book_meeting(callback: CallbackQuery):
-    await callback.message.answer(BOOK_MEETING_TEXT, disable_web_page_preview=True)
+async def book_meeting(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(BOOK_MEETING_TEXT)
+    await start_meeting_booking(callback.message, state)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "meeting:noop")
+async def meeting_noop(callback: CallbackQuery):
+    await callback.answer()
+
+
+@router.callback_query(
+    MeetingBookingFlow.waiting_email,
+    F.data == "meeting:back",
+)
+@router.callback_query(
+    MeetingBookingFlow.waiting_date,
+    F.data == "meeting:back",
+)
+@router.callback_query(
+    MeetingBookingFlow.waiting_custom_time,
+    F.data == "meeting:back",
+)
+@router.callback_query(SimulateFlow.precise_wait_excel, F.data == "meeting:back")
+async def meeting_back(callback: CallbackQuery, state: FSMContext):
+    await return_to_base_state(callback.message, state, "Спасибо, вернёмся к этому позже.")
+    await callback.answer()
+
+
+@router.message(MeetingBookingFlow.waiting_email, F.text)
+async def meeting_email_step(message: Message, state: FSMContext):
+    email = message.text.strip().lower()
+    if not MEETING_EMAIL_RE.match(email):
+        await message.answer("Пожалуйста, отправьте корректный email. Пример: name@company.com")
+        return
+
+    now = datetime.now(ZoneInfo(MEETING_TIMEZONE))
+    await state.update_data(meeting_email=email)
+    await state.set_state(MeetingBookingFlow.waiting_date)
+    await message.answer(
+        "Выберите дату созвона:",
+        reply_markup=meeting_calendar_keyboard(now.year, now.month),
+    )
+
+
+@router.callback_query(MeetingBookingFlow.waiting_date, F.data.startswith("meeting:date:nav:"))
+async def meeting_date_nav(callback: CallbackQuery):
+    _, _, _, ym = callback.data.split(":")
+    year_str, month_str = ym.split("-")
+    year, month = int(year_str), int(month_str)
+    await callback.message.edit_reply_markup(reply_markup=meeting_calendar_keyboard(year, month))
+    await callback.answer()
+
+
+@router.callback_query(MeetingBookingFlow.waiting_date, F.data.startswith("meeting:date:pick:"))
+async def meeting_date_pick(callback: CallbackQuery, state: FSMContext):
+    selected = date.fromisoformat(callback.data.split(":")[-1])
+    await state.update_data(meeting_date=selected.isoformat())
+
+    try:
+        slots = get_available_hour_slots(selected)
+    except (CalendlyRequestError, CalendlyNotConfiguredError) as exc:
+        await callback.message.answer(f"Не удалось получить слоты Calendly: {exc}")
+        await callback.answer()
+        return
+
+    first_five = [format_slot_label(slot) for slot in slots[:5]]
+    await state.update_data(meeting_slot_candidates=first_five)
+    await callback.message.answer(
+        "Свободные слоты на выбранную дату:",
+        reply_markup=meeting_slots_keyboard(first_five),
+    )
+    await callback.answer()
+
+
+@router.callback_query(MeetingBookingFlow.waiting_date, F.data.startswith("meeting:slot:"))
+async def meeting_slot_pick(callback: CallbackQuery, state: FSMContext):
+    value = callback.data.removeprefix("meeting:slot:")
+    if value == "other":
+        await state.set_state(MeetingBookingFlow.waiting_custom_time)
+        await callback.message.answer(
+            "Выберите удобное время:",
+            reply_markup=meeting_custom_time_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    data = await state.get_data()
+    selected_date = date.fromisoformat(data["meeting_date"])
+    hour, minute = map(int, value.split("-") if "-" in value else value.split(":"))
+    slot_dt = datetime.combine(selected_date, time(hour, minute), ZoneInfo(MEETING_TIMEZONE))
+
+    try:
+        if not is_slot_available(slot_dt):
+            await callback.message.answer("Этот слот уже недоступен. Выберите другое время.")
+            await callback.answer()
+            return
+
+        tg_user = callback.from_user
+        invitee_name = f"{tg_user.first_name or ''} {tg_user.last_name or ''}".strip() or "Aivel Client"
+        booking = book_slot(slot_dt, invitee_name, str(data["meeting_email"]))
+    except CalendlyRequestError as exc:
+        await callback.message.answer(f"Не удалось забронировать слот: {exc}")
+        await callback.answer()
+        return
+
+    await add_event(await get_db_user_id(callback), "meeting_booked", slot_dt.isoformat())
+    await return_to_base_state(
+        callback.message,
+        state,
+        f"✅ Встреча забронирована!\nСсылка: {booking.booking_url}",
+    )
+    await callback.answer()
+
+
+@router.callback_query(MeetingBookingFlow.waiting_custom_time, F.data.startswith("meeting:time:"))
+async def meeting_custom_time_pick(callback: CallbackQuery, state: FSMContext):
+    _, _, hh, mm = callback.data.split(":")
+    data = await state.get_data()
+    selected_date = date.fromisoformat(data["meeting_date"])
+    slot_dt = datetime.combine(selected_date, time(int(hh), int(mm)), ZoneInfo(MEETING_TIMEZONE))
+
+    try:
+        if not is_slot_available(slot_dt):
+            await callback.message.answer(
+                "Слот недоступен. Выберите другое время:",
+                reply_markup=meeting_custom_time_keyboard(),
+            )
+            await callback.answer()
+            return
+
+        tg_user = callback.from_user
+        invitee_name = f"{tg_user.first_name or ''} {tg_user.last_name or ''}".strip() or "Aivel Client"
+        booking = book_slot(slot_dt, invitee_name, str(data["meeting_email"]))
+    except CalendlyRequestError as exc:
+        await callback.message.answer(f"Не удалось забронировать слот: {exc}")
+        await callback.answer()
+        return
+
+    await add_event(await get_db_user_id(callback), "meeting_booked_custom", slot_dt.isoformat())
+    await return_to_base_state(
+        callback.message,
+        state,
+        f"✅ Встреча забронирована!\nСсылка: {booking.booking_url}",
+    )
     await callback.answer()
 
 
