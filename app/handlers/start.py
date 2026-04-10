@@ -894,8 +894,7 @@ async def simulate_plus3_automation(callback: CallbackQuery, state: FSMContext):
     await state.update_data(plus3_automation="partial" if value == "skip" else value)
     await state.set_state(SimulateFlow.precise_margin)
     await callback.message.answer(
-        "7️⃣ Текущая валовая маржа (%)?\n"
-        "или пропустить вопрос >",
+        "7️⃣ Текущая валовая маржа (%)?\n",
         parse_mode="HTML",
         reply_markup=simulate_precise_skip_keyboard("simulate:precise:margin:skip"),
     )
@@ -912,8 +911,7 @@ async def simulate_plus3_advisory(callback: CallbackQuery, state: FSMContext):
     await state.update_data(plus3_advisory="10_20" if value == "skip" else value)
     await state.set_state(SimulateFlow.precise_clients)
     await callback.message.answer(
-        "4️⃣ Количество активных клиентов?\n"
-        "или пропустить вопрос >",
+        "4️⃣ Количество активных клиентов?\n",
         parse_mode="HTML",
         reply_markup=simulate_precise_skip_keyboard("simulate:precise:clients:skip"),
     )
@@ -957,7 +955,7 @@ async def simulate_contacts_skip(callback: CallbackQuery, state: FSMContext):
 async def simulate_contacts_share(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SimulateFlow.precise_contact_name)
     await callback.message.answer(
-        "Введите ваше имя или пропустите поле:",
+        "Введите ваше имя:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:name:skip"),
     )
     await callback.answer()
@@ -968,7 +966,7 @@ async def simulate_contact_name(message: Message, state: FSMContext):
     await state.update_data(contact_name=message.text.strip())
     await state.set_state(SimulateFlow.precise_contact_email)
     await message.answer(
-        "Введите ваш Email или пропустите поле:",
+        "Введите ваш Email:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:email:skip"),
     )
 
@@ -978,7 +976,7 @@ async def simulate_contact_name_skip(callback: CallbackQuery, state: FSMContext)
     await state.update_data(contact_name="")
     await state.set_state(SimulateFlow.precise_contact_email)
     await callback.message.answer(
-        "Введите ваш Email или пропустите поле:",
+        "Введите ваш Email:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:email:skip"),
     )
     await callback.answer()
@@ -989,7 +987,7 @@ async def simulate_contact_email(message: Message, state: FSMContext):
     await state.update_data(contact_email=message.text.strip())
     await state.set_state(SimulateFlow.precise_contact_phone)
     await message.answer(
-        "Введите ваш телефон или пропустите поле:",
+        "Введите ваш телефон:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:phone:skip"),
     )
 
@@ -999,7 +997,7 @@ async def simulate_contact_email_skip(callback: CallbackQuery, state: FSMContext
     await state.update_data(contact_email="")
     await state.set_state(SimulateFlow.precise_contact_phone)
     await callback.message.answer(
-        "Введите ваш телефон или пропустите поле:",
+        "Введите ваш телефон:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:phone:skip"),
     )
     await callback.answer()
@@ -1010,7 +1008,7 @@ async def simulate_contact_phone(message: Message, state: FSMContext):
     await state.update_data(contact_phone=message.text.strip())
     await state.set_state(SimulateFlow.precise_contact_company)
     await message.answer(
-        "Введите название компании или пропустите поле:",
+        "Введите название компании:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:company:skip"),
     )
 
@@ -1020,7 +1018,7 @@ async def simulate_contact_phone_skip(callback: CallbackQuery, state: FSMContext
     await state.update_data(contact_phone="")
     await state.set_state(SimulateFlow.precise_contact_company)
     await callback.message.answer(
-        "Введите название компании или пропустите поле:",
+        "Введите название компании:",
         reply_markup=simulate_contact_field_keyboard("simulate:contacts:company:skip"),
     )
     await callback.answer()
@@ -1084,13 +1082,8 @@ async def finalize_precise_assessment(target: Message | CallbackQuery, state: FS
     precise_range = f"{format_rub(precise_result['precise_min_rub'])} – {format_rub(precise_result['precise_max_rub'])} ₽/мес"
     text = (
         "🎯 <b>Ваши результаты с Aivel:</b>\n\n"
-        "Чтобы модель не была слишком “карательной”, мы считаем один итоговый коэффициент (K) "
-        "как взвешенное среднее:\n\n"
-        "K = Kadv*0.30 + Kstd*0.35 + Kauto*0.35\n"
-        "Точная экономия = Экспресс-экономия × K\n\n"
         "Спасибо — на основе ваших ответов мы уточнили базовую оценку и рассчитали более точный потенциал "
         "экономии с учётом специфики именно вашей фирмы.\n"
-        "Точная экономия = Экспресс-экономия × K\n\n"
         f"<b>Диапазон точной экономии: {precise_range}</b>\n"
         f"<i>Итоговый K: {precise_result['k']:.2f}</i>"
     )
@@ -1112,13 +1105,13 @@ async def finalize_precise_assessment(target: Message | CallbackQuery, state: FS
     if isinstance(target, CallbackQuery):
         await target.message.answer(text, parse_mode="HTML")
         await target.message.answer(
-            "Планируете ли вы рост в ближайшие 12-24 месяца?\nВыберите вариант ответа:\n• Нет\n• Да, обычный рост +5–20%\n• Да, быстрый рост >20%",
+            "Планируете ли вы рост в ближайшие 12-24 месяца?",
             reply_markup=simulate_growth_keyboard(),
         )
     else:
         await target.answer(text, parse_mode="HTML")
         await target.answer(
-            "Планируете ли вы рост в ближайшие 12-24 месяца?\nВыберите вариант ответа:\n• Нет\n• Да, обычный рост +5–20%\n• Да, быстрый рост >20%",
+            "Планируете ли вы рост в ближайшие 12-24 месяца?",
             reply_markup=simulate_growth_keyboard(),
         )
 
@@ -1133,7 +1126,7 @@ async def simulate_post_growth(callback: CallbackQuery, state: FSMContext):
     await state.update_data(post_growth=value)
     await state.set_state(SimulateFlow.precise_mna)
     await callback.message.answer(
-        "Рассматриваете ли вы M&A / привлечение инвестиций?\nВыберите вариант ответа:\n• Да\n• Нет",
+        "Рассматриваете ли вы M&A / привлечение инвестиций?",
         reply_markup=simulate_mna_keyboard(),
     )
     await callback.answer()
