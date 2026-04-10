@@ -10,6 +10,7 @@ from app.config import CALENDLY_API_TOKEN, CALENDLY_EVENT_TYPE_URI, MEETING_TIME
 
 
 API_BASE = "https://api.calendly.com"
+EVENT_TYPE_API_PREFIX = "https://api.calendly.com/event_types/"
 
 
 class CalendlyNotConfiguredError(RuntimeError):
@@ -29,6 +30,17 @@ class CalendlyBookingResult:
 
 def is_configured() -> bool:
     return bool(CALENDLY_API_TOKEN and CALENDLY_EVENT_TYPE_URI)
+
+
+def _normalize_url(raw_url: str) -> str:
+    value = raw_url.strip()
+    if value.endswith("/"):
+        value = value[:-1]
+    if value.startswith("http://"):
+        value = "https://" + value[len("http://"):]
+    if not value.startswith("https://"):
+        value = "https://" + value
+    return value
 
 
 def _headers() -> dict[str, str]:
@@ -67,16 +79,52 @@ def _request(method: str, path: str, *, query: dict | None = None, body: dict | 
         raise CalendlyRequestError(f"Calendly connection error: {exc}") from exc
 
 
+def _resolve_event_type_uri() -> str:
+    if not CALENDLY_EVENT_TYPE_URI:
+        raise CalendlyNotConfiguredError("CALENDLY_EVENT_TYPE_URI is missing.")
+
+    raw_value = CALENDLY_EVENT_TYPE_URI.strip()
+    if raw_value.startswith(EVENT_TYPE_API_PREFIX):
+        return raw_value
+
+    normalized = _normalize_url(raw_value)
+    if "calendly.com/" not in normalized:
+        raise CalendlyRequestError(
+            "CALENDLY_EVENT_TYPE_URI должен быть либо API URI event_type, "
+            "либо публичной ссылкой Calendly вида https://calendly.com/username/event."
+        )
+
+    me_response = _request("GET", "/users/me")
+    user_uri = me_response.get("resource", {}).get("uri")
+    if not user_uri:
+        raise CalendlyRequestError("Не удалось получить user URI из Calendly.")
+
+    event_types_response = _request("GET", "/event_types", query={"user": user_uri})
+    for item in event_types_response.get("collection", []):
+        scheduling_url = item.get("scheduling_url")
+        event_uri = item.get("uri")
+        if not scheduling_url or not event_uri:
+            continue
+        if _normalize_url(scheduling_url) == normalized:
+            return event_uri
+
+    raise CalendlyRequestError(
+        "Не удалось сопоставить CALENDLY_EVENT_TYPE_URI с event type. "
+        "Укажите API URI вида https://api.calendly.com/event_types/..."
+    )
+
+
 def get_available_hour_slots(target_date: date) -> list[datetime]:
     tz = ZoneInfo(MEETING_TIMEZONE)
     start_local = datetime.combine(target_date, time(9, 0), tzinfo=tz)
     end_local = datetime.combine(target_date, time(22, 0), tzinfo=tz)
 
+    event_type_uri = _resolve_event_type_uri()
     response = _request(
         "GET",
         "/event_type_available_times",
         query={
-            "event_type": CALENDLY_EVENT_TYPE_URI,
+            "event_type": event_type_uri,
             "start_time": start_local.astimezone(ZoneInfo("UTC")).isoformat().replace("+00:00", "Z"),
             "end_time": end_local.astimezone(ZoneInfo("UTC")).isoformat().replace("+00:00", "Z"),
         },
@@ -110,8 +158,9 @@ def is_slot_available(slot_dt_local: datetime) -> bool:
 
 
 def book_slot(slot_dt_local: datetime, invitee_name: str, invitee_email: str) -> CalendlyBookingResult:
+    event_type_uri = _resolve_event_type_uri()
     body = {
-        "event_type": CALENDLY_EVENT_TYPE_URI,
+        "event_type": event_type_uri,
         "start_time": slot_dt_local.astimezone(ZoneInfo("UTC")).isoformat().replace("+00:00", "Z"),
         "invitee": {
             "name": invitee_name,
