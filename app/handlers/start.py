@@ -1,25 +1,30 @@
 import logging
 import re
+from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
+from aiogram.types import CallbackQuery, FSInputFile, Message, ReplyKeyboardRemove
 
 from app.db import add_event, get_tool_consent, save_profile_field, upsert_user
 from app.keyboards import (
     menu_keyboard,
     persistent_main_keyboard,
     simulate_mode_keyboard,
+    simulate_precise_complex_keyboard,
+    simulate_precise_ops_keyboard,
+    simulate_precise_results_keyboard,
     simulate_results_keyboard,
     tool_consent_keyboard,
     website_optional_keyboard,
 )
-from app.scoring import calculate_express_savings
+from app.scoring import calculate_express_savings, calculate_precise_savings
 from app.states import OnboardingFlow, SimulateFlow, ToolConsentFlow
 
 router = Router()
 logger = logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 URL_RE = re.compile(r"^(https?://)?(www\.)?[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+(/.*)?$", re.IGNORECASE)
 
@@ -73,6 +78,20 @@ SIMULATE_PRO_TEXT = (
     "📤 Заполнили? Загрузить обратно или отправьте это на: success@aivel.ai\n"
     "После загрузки мы подготовим детальный бизнес-кейс и свяжемся с вами в течение 2 рабочих дней."
 )
+SIMULATE_PRO_MISSING_TEXT = (
+    "Не удалось найти Excel-файл в проекте.\n"
+    "Пожалуйста, добавьте .xlsx в репозиторий (например, в app/assets/) и попробуйте снова."
+)
+OPS_SHARE_LABELS = {
+    "40_50": "40-50%",
+    "50_70": "50-70%",
+    "70_plus": "70%+",
+}
+COMPLEX_CASES_LABELS = {
+    "many": "Да, много (>30%)",
+    "some": "Некоторые (10–30%)",
+    "few": "Мало (<10%)",
+}
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -103,6 +122,15 @@ def format_mln_range(min_savings_rub: int, max_savings_rub: int) -> str:
     if max_mln < min_mln:
         max_mln = min_mln
     return f"{min_mln}-{max_mln} млн ₽/год"
+
+
+def find_excel_template() -> Path | None:
+    xlsx_candidates = sorted(PROJECT_ROOT.rglob("*.xlsx"))
+    if not xlsx_candidates:
+        return None
+
+    preferred = [path for path in xlsx_candidates if "aivel" in path.name.lower() or "calculator" in path.name.lower()]
+    return preferred[0] if preferred else xlsx_candidates[0]
 
 
 async def send_simulate_mode_menu(target: Message | CallbackQuery, state: FSMContext):
@@ -376,13 +404,38 @@ async def simulate_mode_express(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(SimulateFlow.mode_select, F.data == "simulate:mode:precise")
-async def simulate_mode_precise(callback: CallbackQuery):
-    await callback.answer("Точная оценка будет доступна в следующем этапе.", show_alert=True)
+async def simulate_mode_precise(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    await add_event(user_id, "simulate_mode_selected", "precise")
+
+    await state.set_state(SimulateFlow.precise_revenue)
+    await callback.message.answer(
+        "✅ <b>Точная оценка</b>\n\n"
+        "Ответьте на 7 вопросов.\n\n"
+        "1️⃣ Годовая выручка (₽)?\n<i>Например: 50000000</i>",
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await callback.answer()
 
 
 @router.callback_query(SimulateFlow.mode_select, F.data == "simulate:mode:pro")
 async def simulate_mode_pro(callback: CallbackQuery):
+    user_id = await get_db_user_id(callback)
+    await add_event(user_id, "simulate_mode_selected", "pro")
+
+    excel_path = find_excel_template()
+    if excel_path is None:
+        await callback.message.answer(SIMULATE_PRO_MISSING_TEXT)
+        await callback.answer("Excel-файл пока не найден", show_alert=True)
+        return
+
     await callback.message.answer(SIMULATE_PRO_TEXT)
+    await callback.message.answer_document(
+        document=FSInputFile(excel_path),
+        caption="📥 Excel-опросник для профессиональной оценки",
+    )
+    await add_event(user_id, "simulate_pro_excel_sent", excel_path.name)
     await callback.answer()
 
 
@@ -445,3 +498,141 @@ async def simulate_express_salary(message: Message, state: FSMContext):
 
     await state.set_state(SimulateFlow.mode_select)
     await message.answer(result_text, parse_mode="HTML", reply_markup=simulate_results_keyboard())
+
+
+@router.message(SimulateFlow.precise_revenue, F.text)
+async def simulate_precise_revenue(message: Message, state: FSMContext):
+    revenue = parse_positive_int(message.text.strip())
+    if revenue is None:
+        await message.answer("Введите годовую выручку числом в ₽. Пример: 50000000")
+        return
+
+    await state.update_data(precise_revenue=revenue)
+    await state.set_state(SimulateFlow.precise_accountants)
+    await message.answer("2️⃣ Количество бухгалтеров (чел.)?\n<i>Например: 15</i>", parse_mode="HTML")
+
+
+@router.message(SimulateFlow.precise_accountants, F.text)
+async def simulate_precise_accountants(message: Message, state: FSMContext):
+    accountants = parse_positive_int(message.text.strip())
+    if accountants is None:
+        await message.answer("Введите количество бухгалтеров целым числом. Пример: 15")
+        return
+
+    await state.update_data(precise_accountants=accountants)
+    await state.set_state(SimulateFlow.precise_salary)
+    await message.answer("3️⃣ Средняя зарплата бухгалтера (₽/мес)?\n<i>Например: 80000</i>", parse_mode="HTML")
+
+
+@router.message(SimulateFlow.precise_salary, F.text)
+async def simulate_precise_salary(message: Message, state: FSMContext):
+    salary = parse_positive_int(message.text.strip())
+    if salary is None:
+        await message.answer("Введите среднюю зарплату бухгалтера числом в ₽. Пример: 80000")
+        return
+
+    await state.update_data(precise_salary=salary)
+    await state.set_state(SimulateFlow.precise_clients)
+    await message.answer("4️⃣ Количество активных клиентов?\n<i>Например: 120</i>", parse_mode="HTML")
+
+
+@router.message(SimulateFlow.precise_clients, F.text)
+async def simulate_precise_clients(message: Message, state: FSMContext):
+    clients = parse_positive_int(message.text.strip())
+    if clients is None:
+        await message.answer("Введите количество активных клиентов целым числом. Пример: 120")
+        return
+
+    await state.update_data(precise_clients=clients)
+    await state.set_state(SimulateFlow.precise_margin)
+    await message.answer("5️⃣ Текущая валовая маржа (%)?\n<i>Например: 35</i>", parse_mode="HTML")
+
+
+@router.message(SimulateFlow.precise_margin, F.text)
+async def simulate_precise_margin(message: Message, state: FSMContext):
+    margin = parse_positive_int(message.text.strip())
+    if margin is None or margin > 100:
+        await message.answer("Введите валовую маржу числом от 1 до 100. Пример: 35")
+        return
+
+    await state.update_data(precise_margin=margin)
+    await state.set_state(SimulateFlow.precise_ops_share)
+    await message.answer(
+        "6️⃣ Какой % работы занимают операции:\n"
+        "• Обработка входящих запросов и документов\n"
+        "• Первичные документы\n"
+        "• Акты сверки\n"
+        "• Работа с банк-клиентом\n\n"
+        "Выберите вариант:",
+        reply_markup=simulate_precise_ops_keyboard(),
+    )
+
+
+@router.callback_query(SimulateFlow.precise_ops_share, F.data.startswith("simulate:precise:ops:"))
+async def simulate_precise_ops_share(callback: CallbackQuery, state: FSMContext):
+    ops_share = callback.data.split(":")[-1]
+    if ops_share not in OPS_SHARE_LABELS:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    await state.update_data(precise_ops_share=ops_share)
+    await state.set_state(SimulateFlow.precise_complex_cases)
+    await callback.message.answer(
+        "7️⃣ Есть ли у вас клиенты со сложными кейсами?\n"
+        "<i>Это снижает процент автоматизации для сложных задач.</i>\n\n"
+        "Выберите вариант:",
+        parse_mode="HTML",
+        reply_markup=simulate_precise_complex_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_complex_cases, F.data.startswith("simulate:precise:complex:"))
+async def simulate_precise_complex_cases(callback: CallbackQuery, state: FSMContext):
+    complex_cases = callback.data.split(":")[-1]
+    if complex_cases not in COMPLEX_CASES_LABELS:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    data = await state.get_data()
+    result = calculate_precise_savings(
+        revenue_rub=int(data["precise_revenue"]),
+        accountants_count=int(data["precise_accountants"]),
+        monthly_salary_rub=int(data["precise_salary"]),
+        clients_count=int(data["precise_clients"]),
+        gross_margin_pct=int(data["precise_margin"]),
+        ops_share_band=str(data["precise_ops_share"]),
+        complex_cases_band=complex_cases,
+    )
+
+    phase1 = format_mln_range(result["phase1_min_rub"], result["phase1_max_rub"]).replace("/год", "")
+    phase2 = format_mln_range(result["phase2_min_rub"], result["phase2_max_rub"]).replace("/год", "")
+    future = format_mln_range(result["future_min_rub"], result["future_max_rub"]).replace("/год", "")
+
+    result_text = (
+        "🎯 <b>Ваши результаты с Aivel:</b>\n"
+        f"Фаза 1 (6 мес): <b>{phase1} экономии</b>\n"
+        f"Фаза 2 (18 мес): <b>{phase2} экономии</b>\n"
+        f"Будущий потенциал: <b>{future}</b>\n\n"
+        "Это быстрая прикидка экономики на основе ваших процессов."
+    )
+
+    user_id = await get_db_user_id(callback)
+    await add_event(
+        user_id,
+        "simulate_precise_completed",
+        (
+            f"revenue={data['precise_revenue']};accountants={data['precise_accountants']};"
+            f"salary={data['precise_salary']};clients={data['precise_clients']};"
+            f"margin={data['precise_margin']};ops={data['precise_ops_share']};complex={complex_cases}"
+        ),
+    )
+
+    await state.set_state(SimulateFlow.mode_select)
+    await callback.message.answer(result_text, parse_mode="HTML", reply_markup=simulate_precise_results_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.mode_select, F.data == "simulate:precise:more")
+async def simulate_precise_more(callback: CallbackQuery):
+    await callback.answer("Блок +3 вопроса добавим следующим этапом.", show_alert=True)

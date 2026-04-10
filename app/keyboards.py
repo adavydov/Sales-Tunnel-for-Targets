@@ -70,3 +70,33 @@ def simulate_results_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="↩️ Вернуться к выбору режима", callback_data="simulate:mode:menu")],
         ]
     )
+
+
+def simulate_precise_ops_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="40-50%", callback_data="simulate:precise:ops:40_50")],
+            [InlineKeyboardButton(text="50-70%", callback_data="simulate:precise:ops:50_70")],
+            [InlineKeyboardButton(text="70%+", callback_data="simulate:precise:ops:70_plus")],
+        ]
+    )
+
+
+def simulate_precise_complex_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Да, много (>30%)", callback_data="simulate:precise:complex:many")],
+            [InlineKeyboardButton(text="Некоторые (10–30%)", callback_data="simulate:precise:complex:some")],
+            [InlineKeyboardButton(text="Мало (<10%)", callback_data="simulate:precise:complex:few")],
+        ]
+    )
+
+
+def simulate_precise_results_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
+            [InlineKeyboardButton(text="📈 Хотите точнее? +3 вопроса", callback_data="simulate:precise:more")],
+            [InlineKeyboardButton(text="↩️ Вернуться к выбору режима", callback_data="simulate:mode:menu")],
+        ]
+    )

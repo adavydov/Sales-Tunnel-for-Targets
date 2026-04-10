@@ -102,3 +102,54 @@ def calculate_express_savings(revenue_rub: int, accountants_count: int, monthly_
         "min_margin_growth_pct": 10,
         "max_margin_growth_pct": 20,
     }
+
+
+def calculate_precise_savings(
+    revenue_rub: int,
+    accountants_count: int,
+    monthly_salary_rub: int,
+    clients_count: int,
+    gross_margin_pct: int,
+    ops_share_band: str,
+    complex_cases_band: str,
+) -> dict[str, int]:
+    annual_payroll = accountants_count * monthly_salary_rub * 12
+
+    ops_multiplier = {
+        "40_50": 0.90,
+        "50_70": 1.00,
+        "70_plus": 1.15,
+    }.get(ops_share_band, 1.00)
+
+    complexity_multiplier = {
+        "many": 0.85,
+        "some": 1.00,
+        "few": 1.08,
+    }.get(complex_cases_band, 1.00)
+
+    scale_multiplier = min(max(clients_count / 100, 0.85), 1.25)
+    margin_multiplier = 1.05 if gross_margin_pct < 30 else 0.95
+
+    combined = ops_multiplier * complexity_multiplier * scale_multiplier * margin_multiplier
+    base_min = int(min(annual_payroll * 0.40 * combined, revenue_rub * 0.16))
+    base_max = int(min(annual_payroll * 0.85 * combined, revenue_rub * 0.30))
+
+    if base_max < base_min:
+        base_max = base_min
+
+    phase2_min = int(base_min * 1.7)
+    phase2_max = int(base_max * 1.9)
+    future_min = int(phase2_min * 1.45)
+    future_max = int(phase2_max * 1.35)
+
+    if future_max < future_min:
+        future_max = future_min
+
+    return {
+        "phase1_min_rub": base_min,
+        "phase1_max_rub": base_max,
+        "phase2_min_rub": phase2_min,
+        "phase2_max_rub": phase2_max,
+        "future_min_rub": future_min,
+        "future_max_rub": future_max,
+    }
