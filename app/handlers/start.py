@@ -926,7 +926,7 @@ async def simulate_precise_contacts(message: Message, state: FSMContext):
         "• Низкая стандартизация: каждый бухгалтер работает по-своему, процессы не описаны\n"
         "или пропустить вопрос >",
         parse_mode="HTML",
-        reply_markup=simulate_plus3_standardization_keyboard(),
+        reply_markup=ReplyKeyboardRemove(),
     )
 
 
