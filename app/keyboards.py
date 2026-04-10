@@ -50,3 +50,23 @@ def tool_consent_keyboard(nda_checked: bool, terms_checked: bool, tool_name: str
             [InlineKeyboardButton(text="Назад", callback_data="consent:back")],
         ]
     )
+
+
+def simulate_mode_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⚡ Начать экспресс-оценку", callback_data="simulate:mode:express")],
+            [InlineKeyboardButton(text="✅ Начать точную оценку", callback_data="simulate:mode:precise")],
+            [InlineKeyboardButton(text="📊 Скачать Excel-файл", callback_data="simulate:mode:pro")],
+        ]
+    )
+
+
+def simulate_results_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Пройти точную оценку", callback_data="simulate:mode:precise")],
+            [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
+            [InlineKeyboardButton(text="↩️ Вернуться к выбору режима", callback_data="simulate:mode:menu")],
+        ]
+    )

@@ -85,3 +85,20 @@ def build_result_screen(track: str, status: str) -> str:
 
     common_cta = "\n\nЕсли хотите, оставьте свои контакты, и мы свяжемся с вами."
     return texts[track][status] + common_cta
+
+
+def calculate_express_savings(revenue_rub: int, accountants_count: int, monthly_salary_rub: int) -> dict[str, int]:
+    annual_payroll = accountants_count * monthly_salary_rub * 12
+
+    min_savings = min(int(annual_payroll * 0.30), int(revenue_rub * 0.12))
+    max_savings = min(int(annual_payroll * 0.90), int(revenue_rub * 0.24))
+
+    if max_savings < min_savings:
+        max_savings = min_savings
+
+    return {
+        "min_savings_rub": min_savings,
+        "max_savings_rub": max_savings,
+        "min_margin_growth_pct": 10,
+        "max_margin_growth_pct": 20,
+    }

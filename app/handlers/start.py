@@ -10,10 +10,13 @@ from app.db import add_event, get_tool_consent, save_profile_field, upsert_user
 from app.keyboards import (
     menu_keyboard,
     persistent_main_keyboard,
+    simulate_mode_keyboard,
+    simulate_results_keyboard,
     tool_consent_keyboard,
     website_optional_keyboard,
 )
-from app.states import OnboardingFlow, ToolConsentFlow
+from app.scoring import calculate_express_savings
+from app.states import OnboardingFlow, SimulateFlow, ToolConsentFlow
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -52,6 +55,24 @@ BOOK_MEETING_TEXT = (
     "• Telegram: @aivel_ai\n"
     "• Website: https://aivel.ru"
 )
+SIMULATE_MODE_TEXT = (
+    "💰 <b>Калькулятор экономии с Aivel</b>\n\n"
+    "Выберите уровень детализации расчёта:\n\n"
+    "⚡ <b>Экспресс-оценка (1 минута)</b>\n"
+    "3 вопроса → мгновенный результат\n"
+    "Для первого знакомства и быстрой оценки порядка цифр\n\n"
+    "✅ <b>Точная оценка (5–7 минут)</b>\n"
+    "7 вопросов → персонализированный расчёт с диапазонами\n\n"
+    "📊 <b>Профессиональная оценка (60–90 минут)</b>\n"
+    "Excel-опросник: ~45 полей данных → максимальная точность\n"
+    "Полный финансовый анализ с моделированием ROI, NPV, и планом внедрения"
+)
+SIMULATE_PRO_TEXT = (
+    "🎯 Серьёзно рассматриваете внедрение? Загрузите Excel — получите полный бизнес-кейс от нашей команды.\n\n"
+    "📥 Скачать Excel-файл\n"
+    "📤 Заполнили? Загрузить обратно или отправьте это на: success@aivel.ai\n"
+    "После загрузки мы подготовим детальный бизнес-кейс и свяжемся с вами в течение 2 рабочих дней."
+)
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -68,12 +89,52 @@ async def send_onboarding_complete(message: Message):
     await message.answer(ONBOARDING_PROMO_TEXT, parse_mode="HTML", reply_markup=persistent_main_keyboard())
 
 
+def parse_positive_int(raw_value: str) -> int | None:
+    normalized = raw_value.replace(" ", "").replace(",", "").replace("_", "")
+    if not normalized.isdigit():
+        return None
+    value = int(normalized)
+    return value if value > 0 else None
+
+
+def format_mln_range(min_savings_rub: int, max_savings_rub: int) -> str:
+    min_mln = round(min_savings_rub / 1_000_000)
+    max_mln = round(max_savings_rub / 1_000_000)
+    if max_mln < min_mln:
+        max_mln = min_mln
+    return f"{min_mln}-{max_mln} млн ₽/год"
+
+
+async def send_simulate_mode_menu(target: Message | CallbackQuery, state: FSMContext):
+    await state.clear()
+    await state.set_state(SimulateFlow.mode_select)
+
+    if isinstance(target, CallbackQuery):
+        await target.message.answer(
+            SIMULATE_MODE_TEXT,
+            parse_mode="HTML",
+            reply_markup=simulate_mode_keyboard(),
+        )
+        await target.answer()
+        return
+
+    await target.answer(
+        SIMULATE_MODE_TEXT,
+        parse_mode="HTML",
+        reply_markup=simulate_mode_keyboard(),
+    )
+
+
 async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FSMContext, tool_name: str):
     user_id = await get_db_user_id(message_or_callback)
     await add_event(user_id, "tool_open_requested", tool_name)
 
     already_accepted = await get_tool_consent(user_id, tool_name)
     if already_accepted:
+        if tool_name == "simulate":
+            await send_simulate_mode_menu(message_or_callback, state)
+            return
+
         if isinstance(message_or_callback, CallbackQuery):
             await message_or_callback.message.answer(
                 TOOL_PLACEHOLDER_TEXT,
@@ -273,8 +334,12 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
     await save_profile_field(user_id, f"{tool_name}_consent", "accepted")
     await add_event(user_id, "tool_consent_accepted", tool_name)
 
-    await state.clear()
     await callback.message.delete()
+    if tool_name == "simulate":
+        await send_simulate_mode_menu(callback, state)
+        return
+
+    await state.clear()
     await callback.message.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
     await callback.answer()
 
@@ -288,3 +353,95 @@ async def book_meeting(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("stub:"))
 async def menu_stub(callback: CallbackQuery):
     await callback.answer("Раздел в разработке. Скоро добавим функционал.", show_alert=True)
+
+
+@router.callback_query(SimulateFlow.mode_select, F.data == "simulate:mode:menu")
+async def simulate_mode_menu(callback: CallbackQuery, state: FSMContext):
+    await send_simulate_mode_menu(callback, state)
+
+
+@router.callback_query(SimulateFlow.mode_select, F.data == "simulate:mode:express")
+async def simulate_mode_express(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    await add_event(user_id, "simulate_mode_selected", "express")
+
+    await state.set_state(SimulateFlow.express_revenue)
+    await callback.message.answer(
+        "⚡ <b>Экспресс-оценка</b>\n\nОтветьте на 3 простых вопроса.\n\n"
+        "1️⃣ Ваша годовая выручка (₽)?\n<i>Например: 50000000</i>",
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.mode_select, F.data == "simulate:mode:precise")
+async def simulate_mode_precise(callback: CallbackQuery):
+    await callback.answer("Точная оценка будет доступна в следующем этапе.", show_alert=True)
+
+
+@router.callback_query(SimulateFlow.mode_select, F.data == "simulate:mode:pro")
+async def simulate_mode_pro(callback: CallbackQuery):
+    await callback.message.answer(SIMULATE_PRO_TEXT)
+    await callback.answer()
+
+
+@router.message(SimulateFlow.express_revenue, F.text)
+async def simulate_express_revenue(message: Message, state: FSMContext):
+    revenue = parse_positive_int(message.text.strip())
+    if revenue is None:
+        await message.answer("Введите годовую выручку числом в ₽. Пример: 50000000")
+        return
+
+    await state.update_data(express_revenue=revenue)
+    await state.set_state(SimulateFlow.express_accountants)
+    await message.answer(
+        "2️⃣ Сколько у вас бухгалтеров (чел.)?\n<i>Например: 15</i>",
+        parse_mode="HTML",
+    )
+
+
+@router.message(SimulateFlow.express_accountants, F.text)
+async def simulate_express_accountants(message: Message, state: FSMContext):
+    accountants = parse_positive_int(message.text.strip())
+    if accountants is None:
+        await message.answer("Введите количество бухгалтеров целым числом. Пример: 15")
+        return
+
+    await state.update_data(express_accountants=accountants)
+    await state.set_state(SimulateFlow.express_salary)
+    await message.answer(
+        "3️⃣ Средняя зарплата бухгалтера (₽/мес)?\n<i>Например: 80000</i>",
+        parse_mode="HTML",
+    )
+
+
+@router.message(SimulateFlow.express_salary, F.text)
+async def simulate_express_salary(message: Message, state: FSMContext):
+    salary = parse_positive_int(message.text.strip())
+    if salary is None:
+        await message.answer("Введите среднюю зарплату бухгалтера числом в ₽. Пример: 80000")
+        return
+
+    data = await state.get_data()
+    revenue = int(data["express_revenue"])
+    accountants = int(data["express_accountants"])
+    result = calculate_express_savings(revenue, accountants, salary)
+
+    savings_range = format_mln_range(result["min_savings_rub"], result["max_savings_rub"])
+    result_text = (
+        "🎯 <b>Ваши результаты с Aivel:</b>\n"
+        f"Ориентировочная экономия: <b>{savings_range}</b>\n"
+        f"Рост маржи: <b>+{result['min_margin_growth_pct']}-{result['max_margin_growth_pct']}%</b>\n\n"
+        "⚠️ Это грубая оценка. Для точного расчёта пройдите детальную оценку."
+    )
+
+    user_id = await get_db_user_id(message)
+    await add_event(
+        user_id,
+        "simulate_express_completed",
+        f"revenue={revenue};accountants={accountants};salary={salary};range={savings_range}",
+    )
+
+    await state.set_state(SimulateFlow.mode_select)
+    await message.answer(result_text, parse_mode="HTML", reply_markup=simulate_results_keyboard())
