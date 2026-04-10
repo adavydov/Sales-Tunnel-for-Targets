@@ -59,8 +59,8 @@ def simulate_mode_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="⚡ Начать экспресс-оценку", callback_data="simulate:mode:express")],
-            [InlineKeyboardButton(text="✅ Начать точную оценку", callback_data="simulate:mode:precise")],
             [InlineKeyboardButton(text="📊 Скачать Excel-файл", callback_data="simulate:mode:pro")],
+            [InlineKeyboardButton(text="↩️ Назад", callback_data="simulate:back")],
         ]
     )
 
@@ -68,9 +68,19 @@ def simulate_mode_keyboard() -> InlineKeyboardMarkup:
 def simulate_results_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Пройти точную оценку", callback_data="simulate:mode:precise")],
             [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
+            [InlineKeyboardButton(text="📈 Хотите точнее? +5 вопроса", callback_data="simulate:precise:more5")],
+            [InlineKeyboardButton(text="📊 Скачать Excel-файл", callback_data="simulate:mode:pro")],
             [InlineKeyboardButton(text="↩️ Назад", callback_data="simulate:back")],
+        ]
+    )
+
+
+def simulate_skip_question_keyboard(question_key: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Пропустить вопрос", callback_data=f"simulate:express:skip:{question_key}")],
+            [InlineKeyboardButton(text="Назад", callback_data="simulate:back")],
         ]
     )
 

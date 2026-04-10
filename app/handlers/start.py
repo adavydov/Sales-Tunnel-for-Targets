@@ -37,11 +37,12 @@ from app.keyboards import (
     simulate_precise_ops_keyboard,
     simulate_precise_results_keyboard,
     simulate_results_keyboard,
+    simulate_skip_question_keyboard,
     tool_consent_keyboard,
     website_optional_keyboard,
 )
 from app.scoring import (
-    calculate_express_savings,
+    calculate_express_operation_savings,
     calculate_precise_savings,
     refine_precise_savings_with_plus3,
 )
@@ -84,10 +85,8 @@ SIMULATE_MODE_TEXT = (
     "💰 <b>Калькулятор экономии с Aivel</b>\n\n"
     "Выберите уровень детализации расчёта:\n\n"
     "⚡ <b>Экспресс-оценка (1 минута)</b>\n"
-    "3 вопроса → мгновенный результат\n"
+    "2 вопроса → мгновенный результат\n"
     "Для первого знакомства и быстрой оценки порядка цифр\n\n"
-    "✅ <b>Точная оценка (5–7 минут)</b>\n"
-    "7 вопросов → персонализированный расчёт с диапазонами\n\n"
     "📊 <b>Профессиональная оценка (60–90 минут)</b>\n"
     "Excel-опросник: ~45 полей данных → максимальная точность\n"
     "Полный финансовый анализ с моделированием ROI, NPV, и планом внедрения"
@@ -136,6 +135,8 @@ WAIT_FILE_TEXT = (
 THANKS_DEEP_TEXT = "Спасибо! С вами свяжутся в течение 2 рабочих дней."
 THANKS_TOOL_TEXT = "Спасибо, что воспользовались нашим инструментом, надеемся он оказался полезным."
 MEETING_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+DEFAULT_EXPRESS_ACCOUNTANTS = 15
+DEFAULT_EXPRESS_SALARY = 120000
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -166,6 +167,49 @@ def format_mln_range(min_savings_rub: int, max_savings_rub: int) -> str:
     if max_mln < min_mln:
         max_mln = min_mln
     return f"{min_mln}-{max_mln} млн ₽/год"
+
+
+def format_rub(value: float) -> str:
+    return f"{int(round(value)):,}".replace(",", " ")
+
+
+async def send_express_result(message: Message, state: FSMContext):
+    data = await state.get_data()
+    accountants = int(data["express_accountants"])
+    salary = int(data["express_salary"])
+    result = calculate_express_operation_savings(accountants, salary)
+
+    text = (
+        "🎯 <b>Ваши результаты с Aivel:</b>\n\n"
+        "Шаги расчёта через 6 месяцев и через 12 месяцев\n\n"
+        "1. <b>Число высвобождаемых бухгалтеров</b>\n"
+        f"• через 6 месяцев: <b>{result['released_6']:.2f}</b>\n"
+        f"• через 12 месяцев: <b>{result['released_12']:.2f}</b>\n\n"
+        "2. <b>Сохраняемая месячная зарплатная масса</b>\n"
+        f"• через 6 месяцев: <b>{format_rub(result['payroll_saved_6'])} ₽ в месяц</b>\n"
+        f"• через 12 месяцев: <b>{format_rub(result['payroll_saved_12'])} ₽ в месяц</b>\n\n"
+        "3. <b>Новая стоимость операций на базе искусственного интеллекта</b>\n"
+        f"• через 6 месяцев: <b>{format_rub(result['ai_cost_6'])} ₽ в месяц</b>\n"
+        f"• через 12 месяцев: <b>{format_rub(result['ai_cost_12'])} ₽ в месяц</b>\n\n"
+        "4. <b>Чистая экономия в месяц</b>\n"
+        f"• через 6 месяцев: <b>{format_rub(result['net_6'])} ₽ в месяц</b>\n"
+        f"• через 12 месяцев: <b>{format_rub(result['net_12'])} ₽ в месяц</b>\n\n"
+        "⚠️ Это быстрая прикидка экономии на коленке. Для точного расчёта пройдите детальную оценку.\n"
+        "Дисклеймер: стоимость услуг AIVEL в среднем составляет 1/5 от операций, "
+        "основанных на ручном труде; данный расчёт не является коммерческим предложением, "
+        "а представляет собой оценку эффекта от внедрения технологического комплекса AIVEL TECH SUITE."
+    )
+
+    user_id = data.get("db_user_id")
+    if user_id:
+        await add_event(
+            int(user_id),
+            "simulate_express_completed",
+            f"accountants={accountants};salary={salary};net6={format_rub(result['net_6'])};net12={format_rub(result['net_12'])}",
+        )
+
+    await state.set_state(SimulateFlow.mode_select)
+    await message.answer(text, parse_mode="HTML", reply_markup=simulate_results_keyboard())
 
 
 def find_excel_template() -> Path | None:
@@ -655,12 +699,18 @@ async def simulate_mode_express(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
     await add_event(user_id, "simulate_mode_selected", "express")
 
-    await state.set_state(SimulateFlow.express_revenue)
+    await state.update_data(db_user_id=user_id)
+    await state.set_state(SimulateFlow.express_accountants)
     await callback.message.answer(
-        "⚡ <b>Экспресс-оценка</b>\n\nОтветьте на 3 простых вопроса.\n\n"
-        "1️⃣ Ваша годовая выручка (₽)?\n<i>Например: 50000000</i>",
+        "⚡ <b>Экспресс-оценка</b>\n\nОтветьте на 2 простых вопроса.\n\n"
+        "1️⃣ Сколько у вас бухгалтеров (чел.) задействовано в выполнении следующих операций:\n"
+        "• Обработка входящих запросов и документов\n"
+        "• Первичные документы\n"
+        "• Акты сверки\n"
+        "• Работа с банк-клиентом\n\n"
+        f"<i>Например: {DEFAULT_EXPRESS_ACCOUNTANTS}</i>",
         parse_mode="HTML",
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=simulate_skip_question_keyboard("accountants"),
     )
     await callback.answer()
 
@@ -696,21 +746,6 @@ async def simulate_mode_pro(callback: CallbackQuery, state: FSMContext):
     await send_excel_and_wait_for_user(callback, state)
 
 
-@router.message(SimulateFlow.express_revenue, F.text)
-async def simulate_express_revenue(message: Message, state: FSMContext):
-    revenue = parse_positive_int(message.text.strip())
-    if revenue is None:
-        await message.answer("Введите годовую выручку числом в ₽. Пример: 50000000")
-        return
-
-    await state.update_data(express_revenue=revenue)
-    await state.set_state(SimulateFlow.express_accountants)
-    await message.answer(
-        "2️⃣ Сколько у вас бухгалтеров (чел.)?\n<i>Например: 15</i>",
-        parse_mode="HTML",
-    )
-
-
 @router.message(SimulateFlow.express_accountants, F.text)
 async def simulate_express_accountants(message: Message, state: FSMContext):
     accountants = parse_positive_int(message.text.strip())
@@ -721,9 +756,24 @@ async def simulate_express_accountants(message: Message, state: FSMContext):
     await state.update_data(express_accountants=accountants)
     await state.set_state(SimulateFlow.express_salary)
     await message.answer(
-        "3️⃣ Средняя зарплата бухгалтера (₽/мес)?\n<i>Например: 80000</i>",
+        "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n"
+        f"<i>Например: {DEFAULT_EXPRESS_SALARY}</i>",
         parse_mode="HTML",
+        reply_markup=simulate_skip_question_keyboard("salary"),
     )
+
+
+@router.callback_query(SimulateFlow.express_accountants, F.data == "simulate:express:skip:accountants")
+async def simulate_express_skip_accountants(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(express_accountants=DEFAULT_EXPRESS_ACCOUNTANTS)
+    await state.set_state(SimulateFlow.express_salary)
+    await callback.message.answer(
+        "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n"
+        f"<i>Например: {DEFAULT_EXPRESS_SALARY}</i>",
+        parse_mode="HTML",
+        reply_markup=simulate_skip_question_keyboard("salary"),
+    )
+    await callback.answer()
 
 
 @router.message(SimulateFlow.express_salary, F.text)
@@ -733,28 +783,15 @@ async def simulate_express_salary(message: Message, state: FSMContext):
         await message.answer("Введите среднюю зарплату бухгалтера числом в ₽. Пример: 80000")
         return
 
-    data = await state.get_data()
-    revenue = int(data["express_revenue"])
-    accountants = int(data["express_accountants"])
-    result = calculate_express_savings(revenue, accountants, salary)
+    await state.update_data(express_salary=salary)
+    await send_express_result(message, state)
 
-    savings_range = format_mln_range(result["min_savings_rub"], result["max_savings_rub"])
-    result_text = (
-        "🎯 <b>Ваши результаты с Aivel:</b>\n"
-        f"Ориентировочная экономия: <b>{savings_range}</b>\n"
-        f"Рост маржи: <b>+{result['min_margin_growth_pct']}-{result['max_margin_growth_pct']}%</b>\n\n"
-        "⚠️ Это грубая оценка. Для точного расчёта пройдите детальную оценку."
-    )
 
-    user_id = await get_db_user_id(message)
-    await add_event(
-        user_id,
-        "simulate_express_completed",
-        f"revenue={revenue};accountants={accountants};salary={salary};range={savings_range}",
-    )
-
-    await state.set_state(SimulateFlow.mode_select)
-    await message.answer(result_text, parse_mode="HTML", reply_markup=simulate_results_keyboard())
+@router.callback_query(SimulateFlow.express_salary, F.data == "simulate:express:skip:salary")
+async def simulate_express_skip_salary(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(express_salary=DEFAULT_EXPRESS_SALARY)
+    await send_express_result(callback.message, state)
+    await callback.answer()
 
 
 @router.message(SimulateFlow.precise_revenue, F.text)
@@ -905,6 +942,11 @@ async def simulate_precise_more(callback: CallbackQuery, state: FSMContext):
         reply_markup=simulate_plus3_standardization_keyboard(),
     )
     await callback.answer()
+
+
+@router.callback_query(SimulateFlow.mode_select, F.data == "simulate:precise:more5")
+async def simulate_precise_more5(callback: CallbackQuery):
+    await callback.answer("Блок «+5 вопросов» подключим следующим этапом.", show_alert=True)
 
 
 @router.callback_query(SimulateFlow.precise_standardization, F.data.startswith("simulate:plus3:std:"))
