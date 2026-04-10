@@ -4,14 +4,6 @@ from psycopg.rows import dict_row
 from app.config import DATABASE_URL
 
 
-ALLOWED_TRACKS = {"t1", "t2"}
-ALLOWED_ROLES = {"owner", "partner", "ceo", "ops"}
-ALLOWED_BUSINESS_SIZES = {"large", "medium", "small"}
-ALLOWED_TIMEFRAMES = {"now", "3_6", "6_12", "later"}
-ALLOWED_MOTIVATIONS = {
-    "exit", "liquidity", "burnout", "risk",
-    "growth", "partner", "control", "scale",
-}
 ALLOWED_STATUSES = {"new", "not_fit", "nurture", "ready_t1", "ready_t2"}
 ALLOWED_CONTACT_TYPES = {"email", "telegram", "phone"}
 CONTACT_COLUMN_BY_TYPE = {
@@ -148,13 +140,6 @@ async def init_db():
                     username TEXT,
                     first_name TEXT,
                     last_name TEXT,
-                    track TEXT CHECK (track IN ('t1', 't2')),
-                    role TEXT CHECK (role IN ('owner', 'partner', 'ceo', 'ops')),
-                    business_size TEXT CHECK (business_size IN ('large', 'medium', 'small')),
-                    timeframe TEXT CHECK (timeframe IN ('now', '3_6', '6_12', 'later')),
-                    motivation TEXT CHECK (
-                        motivation IN ('exit', 'liquidity', 'burnout', 'risk', 'growth', 'partner', 'control', 'scale')
-                    ),
                     company TEXT,
                     contact_name TEXT,
                     contact_phone TEXT,
@@ -186,23 +171,6 @@ async def init_db():
                 );
             """)
 
-            await cur.execute("""
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS track TEXT CHECK (track IN ('t1', 't2'));
-            """)
-            await cur.execute("""
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT CHECK (role IN ('owner', 'partner', 'ceo', 'ops'));
-            """)
-            await cur.execute("""
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS business_size TEXT CHECK (business_size IN ('large', 'medium', 'small'));
-            """)
-            await cur.execute("""
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS timeframe TEXT CHECK (timeframe IN ('now', '3_6', '6_12', 'later'));
-            """)
-            await cur.execute("""
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS motivation TEXT CHECK (
-                    motivation IN ('exit', 'liquidity', 'burnout', 'risk', 'growth', 'partner', 'control', 'scale')
-                );
-            """)
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS company TEXT;""")
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_name TEXT;""")
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_phone TEXT;""")
@@ -248,6 +216,11 @@ async def init_db():
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_email;""")
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_telegram;""")
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_phone;""")
+            await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS track;""")
+            await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS role;""")
+            await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS business_size;""")
+            await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS timeframe;""")
+            await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS motivation;""")
 
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS lead_events (
@@ -404,16 +377,6 @@ async def update_question_status(question_id: int, status: str):
 async def save_profile_field(user_id: int, field_name: str, value: str):
     if field_name not in ALLOWED_PROFILE_FIELDS:
         raise ValueError(f"Недопустимое поле профиля: {field_name}")
-    if field_name == "track" and value not in ALLOWED_TRACKS:
-        raise ValueError(f"Недопустимое значение track: {value}")
-    if field_name == "role" and value not in ALLOWED_ROLES:
-        raise ValueError(f"Недопустимое значение role: {value}")
-    if field_name == "business_size" and value not in ALLOWED_BUSINESS_SIZES:
-        raise ValueError(f"Недопустимое значение business_size: {value}")
-    if field_name == "timeframe" and value not in ALLOWED_TIMEFRAMES:
-        raise ValueError(f"Недопустимое значение timeframe: {value}")
-    if field_name == "motivation" and value not in ALLOWED_MOTIVATIONS:
-        raise ValueError(f"Недопустимое значение motivation: {value}")
 
     conn = await get_connection()
     try:
