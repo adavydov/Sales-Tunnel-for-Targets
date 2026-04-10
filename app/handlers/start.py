@@ -93,10 +93,28 @@ SIMULATE_MODE_TEXT = (
     "Полный финансовый анализ с моделированием ROI, NPV, и планом внедрения"
 )
 SIMULATE_PRO_TEXT = (
-    "🎯 Серьёзно рассматриваете внедрение? Загрузите Excel — получите полный бизнес-кейс от нашей команды.\n\n"
+    "🎯 Серьёзно рассматриваете внедрение? Загрузите Excel — получите полный бизнес-кейс от нашей команды.\n"
     "📥 Скачать Excel-файл\n"
     "📤 Заполнили? Загрузить обратно или отправьте это на: success@aivel.ai\n"
-    "После загрузки мы подготовим детальный бизнес-кейс и свяжемся с вами в течение 2 рабочих дней."
+    "После загрузки мы подготовим детальный бизнес-кейс и свяжемся с вами в течение 2 рабочих дней.\n\n"
+    "📊 Что внутри Excel-опросника?\n\n"
+    "1️⃣ Цифры (Лист 1) — 20 полей, 25-30 минут\n"
+    "• Выручка и прибыль за 3 года\n"
+    "• Структура клиентов и средний чек\n"
+    "• Отток и концентрация выручки\n"
+    "• Маржинальность и повторяемость\n\n"
+    "2️⃣ Компания и рынок (Лист 2) — 15 полей, 10-15 минут\n"
+    "• Профиль компании и юрструктура\n"
+    "• Рыночная позиция и конкуренты\n"
+    "• Структура услуг и допродажи\n"
+    "• Технологии и автоматизация\n\n"
+    "3️⃣ Основатели (Лист 3) — 10 полей, 5-10 минут\n"
+    "• Состав собственников\n"
+    "• Роль в операционке\n"
+    "• Предпочтения по сделке\n"
+    "• Интерес к M&A\n\n"
+    "Итого: 45 полей, 30-40 минут\n"
+    "Можно заполнять частями, сохранять, возвращаться. Все поля с подсказками и примерами."
 )
 SIMULATE_PRO_MISSING_TEXT = (
     "Не удалось найти Excel-файл в проекте.\n"
@@ -294,6 +312,7 @@ async def send_excel_and_wait_for_user(callback: CallbackQuery, state: FSMContex
         await callback.answer("Excel-файл пока не найден", show_alert=True)
         return
 
+    await callback.message.answer(SIMULATE_PRO_TEXT)
     await callback.message.answer_document(
         document=FSInputFile(excel_path),
         caption="📥 Excel-опросник для профессиональной оценки",
@@ -753,7 +772,6 @@ async def simulate_mode_pro(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
     await add_event(user_id, "simulate_mode_selected", "pro")
 
-    await callback.message.answer(SIMULATE_PRO_TEXT)
     await send_excel_and_wait_for_user(callback, state)
 
 
