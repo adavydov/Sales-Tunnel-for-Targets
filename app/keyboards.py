@@ -85,6 +85,31 @@ def simulate_skip_question_keyboard(question_key: str) -> InlineKeyboardMarkup:
     )
 
 
+def simulate_precise_skip_keyboard(callback_data: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Пропустить вопрос", callback_data=callback_data)],
+        ]
+    )
+
+
+def simulate_contacts_choice_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Поделиться", callback_data="simulate:contacts:share")],
+            [InlineKeyboardButton(text="Пропустить вопрос", callback_data="simulate:contacts:skip")],
+        ]
+    )
+
+
+def simulate_contact_field_keyboard(skip_callback: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Пропустить поле", callback_data=skip_callback)],
+        ]
+    )
+
+
 def simulate_precise_ops_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

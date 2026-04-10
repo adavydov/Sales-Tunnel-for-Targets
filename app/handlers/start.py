@@ -35,6 +35,9 @@ from app.keyboards import (
     simulate_plus3_standardization_keyboard,
     simulate_growth_keyboard,
     simulate_mna_keyboard,
+    simulate_contact_field_keyboard,
+    simulate_contacts_choice_keyboard,
+    simulate_precise_skip_keyboard,
     simulate_results_keyboard,
     simulate_skip_question_keyboard,
     tool_consent_keyboard,
@@ -157,6 +160,20 @@ def format_mln_range(min_savings_rub: int, max_savings_rub: int) -> str:
 
 def format_rub(value: float) -> str:
     return f"{int(round(value)):,}".replace(",", " ")
+
+
+async def ask_precise_standardization_question(message: Message):
+    await message.answer(
+        "5️⃣ Насколько стандартизированы ваши процессы?\n"
+        "“При высокой стандартизации вы достигнете результатов на 30% быстрее”\n"
+        "Выберите вариант ответа:\n"
+        "• Высокая стандартизация: есть регламенты, чек-листы, единая методология для всех бухгалтеров\n"
+        "• Средняя стандартизация: базовые стандарты есть, но много ручной работы и решений “на месте”\n"
+        "• Низкая стандартизация: каждый бухгалтер работает по-своему, процессы не описаны\n"
+        "или пропустить вопрос >",
+        parse_mode="HTML",
+        reply_markup=simulate_plus3_standardization_keyboard(),
+    )
 
 
 async def send_express_result(message: Message, state: FSMContext):
@@ -803,6 +820,7 @@ async def simulate_precise_clients(message: Message, state: FSMContext):
         "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон, Название компании)\n"
         "или пропустить вопрос >",
         parse_mode="HTML",
+        reply_markup=simulate_contacts_choice_keyboard(),
     )
 
 
@@ -879,7 +897,7 @@ async def simulate_plus3_automation(callback: CallbackQuery, state: FSMContext):
         "7️⃣ Текущая валовая маржа (%)?\n"
         "или пропустить вопрос >",
         parse_mode="HTML",
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=simulate_precise_skip_keyboard("simulate:precise:margin:skip"),
     )
     await callback.answer()
 
@@ -897,43 +915,157 @@ async def simulate_plus3_advisory(callback: CallbackQuery, state: FSMContext):
         "4️⃣ Количество активных клиентов?\n"
         "или пропустить вопрос >",
         parse_mode="HTML",
+        reply_markup=simulate_precise_skip_keyboard("simulate:precise:clients:skip"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_clients, F.data == "simulate:precise:clients:skip")
+async def simulate_precise_clients_skip(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(precise_clients=0)
+    await state.set_state(SimulateFlow.precise_contacts)
+    await callback.message.answer(
+        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон, Название компании)\n"
+        "или пропустить вопрос >",
+        parse_mode="HTML",
+        reply_markup=simulate_contacts_choice_keyboard(),
     )
     await callback.answer()
 
 
 @router.message(SimulateFlow.precise_clients, F.text.casefold() == "пропустить")
-async def simulate_precise_clients_skip(message: Message, state: FSMContext):
+async def simulate_precise_clients_skip_text(message: Message, state: FSMContext):
     await state.update_data(precise_clients=0)
     await state.set_state(SimulateFlow.precise_contacts)
     await message.answer(
         "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон, Название компании)\n"
         "или пропустить вопрос >",
         parse_mode="HTML",
+        reply_markup=simulate_contacts_choice_keyboard(),
     )
 
 
-@router.message(SimulateFlow.precise_contacts, F.text)
-async def simulate_precise_contacts(message: Message, state: FSMContext):
-    raw = message.text.strip()
-    await state.update_data(precise_contacts="" if raw.casefold() == "пропустить" else raw)
+@router.callback_query(SimulateFlow.precise_contacts, F.data == "simulate:contacts:skip")
+async def simulate_contacts_skip(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(precise_contacts="")
     await state.set_state(SimulateFlow.precise_standardization)
-    await message.answer(
-        "5️⃣ Насколько стандартизированы ваши процессы?\n"
-        "“При высокой стандартизации вы достигнете результатов на 30% быстрее”\n"
-        "Выберите вариант ответа:\n"
-        "• Высокая стандартизация: есть регламенты, чек-листы, единая методология для всех бухгалтеров\n"
-        "• Средняя стандартизация: базовые стандарты есть, но много ручной работы и решений “на месте”\n"
-        "• Низкая стандартизация: каждый бухгалтер работает по-своему, процессы не описаны\n"
-        "или пропустить вопрос >",
-        parse_mode="HTML",
-        reply_markup=ReplyKeyboardRemove(),
+    await ask_precise_standardization_question(callback.message)
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_contacts, F.data == "simulate:contacts:share")
+async def simulate_contacts_share(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(SimulateFlow.precise_contact_name)
+    await callback.message.answer(
+        "Введите ваше имя или пропустите поле:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:name:skip"),
     )
+    await callback.answer()
+
+
+@router.message(SimulateFlow.precise_contact_name, F.text)
+async def simulate_contact_name(message: Message, state: FSMContext):
+    await state.update_data(contact_name=message.text.strip())
+    await state.set_state(SimulateFlow.precise_contact_email)
+    await message.answer(
+        "Введите ваш Email или пропустите поле:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:email:skip"),
+    )
+
+
+@router.callback_query(SimulateFlow.precise_contact_name, F.data == "simulate:contacts:name:skip")
+async def simulate_contact_name_skip(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(contact_name="")
+    await state.set_state(SimulateFlow.precise_contact_email)
+    await callback.message.answer(
+        "Введите ваш Email или пропустите поле:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:email:skip"),
+    )
+    await callback.answer()
+
+
+@router.message(SimulateFlow.precise_contact_email, F.text)
+async def simulate_contact_email(message: Message, state: FSMContext):
+    await state.update_data(contact_email=message.text.strip())
+    await state.set_state(SimulateFlow.precise_contact_phone)
+    await message.answer(
+        "Введите ваш телефон или пропустите поле:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:phone:skip"),
+    )
+
+
+@router.callback_query(SimulateFlow.precise_contact_email, F.data == "simulate:contacts:email:skip")
+async def simulate_contact_email_skip(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(contact_email="")
+    await state.set_state(SimulateFlow.precise_contact_phone)
+    await callback.message.answer(
+        "Введите ваш телефон или пропустите поле:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:phone:skip"),
+    )
+    await callback.answer()
+
+
+@router.message(SimulateFlow.precise_contact_phone, F.text)
+async def simulate_contact_phone(message: Message, state: FSMContext):
+    await state.update_data(contact_phone=message.text.strip())
+    await state.set_state(SimulateFlow.precise_contact_company)
+    await message.answer(
+        "Введите название компании или пропустите поле:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:company:skip"),
+    )
+
+
+@router.callback_query(SimulateFlow.precise_contact_phone, F.data == "simulate:contacts:phone:skip")
+async def simulate_contact_phone_skip(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(contact_phone="")
+    await state.set_state(SimulateFlow.precise_contact_company)
+    await callback.message.answer(
+        "Введите название компании или пропустите поле:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:company:skip"),
+    )
+    await callback.answer()
+
+
+@router.message(SimulateFlow.precise_contact_company, F.text)
+async def simulate_contact_company(message: Message, state: FSMContext):
+    await state.update_data(contact_company=message.text.strip())
+    data = await state.get_data()
+    await state.update_data(
+        precise_contacts=(
+            f"name={data.get('contact_name', '')}|email={data.get('contact_email', '')}|"
+            f"phone={data.get('contact_phone', '')}|company={message.text.strip()}"
+        ),
+    )
+    await state.set_state(SimulateFlow.precise_standardization)
+    await ask_precise_standardization_question(message)
+
+
+@router.callback_query(SimulateFlow.precise_contact_company, F.data == "simulate:contacts:company:skip")
+async def simulate_contact_company_skip(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await state.update_data(
+        contact_company="",
+        precise_contacts=(
+            f"name={data.get('contact_name', '')}|email={data.get('contact_email', '')}|"
+            f"phone={data.get('contact_phone', '')}|company="
+        ),
+    )
+    await state.set_state(SimulateFlow.precise_standardization)
+    await ask_precise_standardization_question(callback.message)
+    await callback.answer()
 
 
 @router.message(SimulateFlow.precise_margin, F.text.casefold() == "пропустить")
 async def simulate_precise_margin_skip(message: Message, state: FSMContext):
     await state.update_data(precise_margin=0)
     await finalize_precise_assessment(message, state)
+
+
+@router.callback_query(SimulateFlow.precise_margin, F.data == "simulate:precise:margin:skip")
+async def simulate_precise_margin_skip_callback(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(precise_margin=0)
+    await finalize_precise_assessment(callback.message, state)
+    await callback.answer()
 
 
 async def finalize_precise_assessment(target: Message | CallbackQuery, state: FSMContext):
