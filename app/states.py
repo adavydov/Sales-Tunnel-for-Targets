@@ -22,3 +22,7 @@ class SimulateFlow(StatesGroup):
     precise_margin = State()
     precise_ops_share = State()
     precise_complex_cases = State()
+    precise_standardization = State()
+    precise_automation = State()
+    precise_advisory = State()
+    precise_wait_excel = State()

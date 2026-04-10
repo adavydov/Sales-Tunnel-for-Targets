@@ -153,3 +153,54 @@ def calculate_precise_savings(
         "future_min_rub": future_min,
         "future_max_rub": future_max,
     }
+
+
+def refine_precise_savings_with_plus3(
+    base_result: dict[str, int],
+    standardization_band: str,
+    automation_band: str,
+    advisory_band: str,
+) -> dict[str, int]:
+    standardization_multiplier = {
+        "high": 1.12,
+        "medium": 1.00,
+        "low": 0.90,
+    }.get(standardization_band, 1.00)
+    automation_multiplier = {
+        "none": 0.90,
+        "partial": 1.00,
+        "crm": 1.08,
+        "rpa": 1.15,
+    }.get(automation_band, 1.00)
+    advisory_multiplier = {
+        "lt5": 1.08,
+        "5_15": 1.00,
+        "15_25": 0.94,
+        "gt25": 0.88,
+    }.get(advisory_band, 1.00)
+
+    combined = standardization_multiplier * automation_multiplier * advisory_multiplier
+
+    phase1_min = int(base_result["phase1_min_rub"] * combined * 1.02)
+    phase1_max = int(base_result["phase1_max_rub"] * combined * 0.90)
+    if phase1_max < phase1_min:
+        phase1_max = phase1_min
+
+    phase2_min = int(phase1_min * 1.6)
+    phase2_max = int(phase1_max * 1.75)
+    if phase2_max < phase2_min:
+        phase2_max = phase2_min
+
+    future_min = int(phase2_min * 1.45)
+    future_max = int(phase2_max * 1.3)
+    if future_max < future_min:
+        future_max = future_min
+
+    return {
+        "phase1_min_rub": phase1_min,
+        "phase1_max_rub": phase1_max,
+        "phase2_min_rub": phase2_min,
+        "phase2_max_rub": phase2_max,
+        "future_min_rub": future_min,
+        "future_max_rub": future_max,
+    }

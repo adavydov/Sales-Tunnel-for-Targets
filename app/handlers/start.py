@@ -11,7 +11,11 @@ from app.db import add_event, get_tool_consent, save_profile_field, upsert_user
 from app.keyboards import (
     menu_keyboard,
     persistent_main_keyboard,
+    simulate_deep_assessment_keyboard,
     simulate_mode_keyboard,
+    simulate_plus3_advisory_keyboard,
+    simulate_plus3_automation_keyboard,
+    simulate_plus3_standardization_keyboard,
     simulate_precise_complex_keyboard,
     simulate_precise_ops_keyboard,
     simulate_precise_results_keyboard,
@@ -19,7 +23,11 @@ from app.keyboards import (
     tool_consent_keyboard,
     website_optional_keyboard,
 )
-from app.scoring import calculate_express_savings, calculate_precise_savings
+from app.scoring import (
+    calculate_express_savings,
+    calculate_precise_savings,
+    refine_precise_savings_with_plus3,
+)
 from app.states import OnboardingFlow, SimulateFlow, ToolConsentFlow
 
 router = Router()
@@ -92,6 +100,28 @@ COMPLEX_CASES_LABELS = {
     "some": "Некоторые (10–30%)",
     "few": "Мало (<10%)",
 }
+STANDARDIZATION_LABELS = {
+    "high": "Высокая",
+    "medium": "Средняя",
+    "low": "Низкая",
+}
+AUTOMATION_LABELS = {
+    "none": "Нет, всё вручную",
+    "partial": "Частично",
+    "crm": "Есть CRM/системы",
+    "rpa": "Продвинутая (RPA/боты)",
+}
+ADVISORY_LABELS = {
+    "lt5": "Менее 5%",
+    "5_15": "5-15%",
+    "15_25": "15-25%",
+    "gt25": "Более 25%",
+}
+WAIT_FILE_TEXT = (
+    "Ожидаем ваш файл.\n\n"
+    "Вы можете загрузить Excel сюда или нажать «Отправил по почте», если уже отправили на success@aivel.ai."
+)
+THANKS_DEEP_TEXT = "Спасибо! С вами свяжутся в течение 2 рабочих дней."
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -131,6 +161,13 @@ def find_excel_template() -> Path | None:
 
     preferred = [path for path in xlsx_candidates if "aivel" in path.name.lower() or "calculator" in path.name.lower()]
     return preferred[0] if preferred else xlsx_candidates[0]
+
+
+def is_excel_filename(filename: str | None) -> bool:
+    if not filename:
+        return False
+    lowered = filename.lower()
+    return lowered.endswith(".xlsx") or lowered.endswith(".xls") or lowered.endswith(".xlsm")
 
 
 async def send_simulate_mode_menu(target: Message | CallbackQuery, state: FSMContext):
@@ -594,6 +631,7 @@ async def simulate_precise_complex_cases(callback: CallbackQuery, state: FSMCont
         await callback.answer("Некорректный вариант", show_alert=True)
         return
 
+    await state.update_data(precise_complex_cases=complex_cases)
     data = await state.get_data()
     result = calculate_precise_savings(
         revenue_rub=int(data["precise_revenue"]),
@@ -634,5 +672,145 @@ async def simulate_precise_complex_cases(callback: CallbackQuery, state: FSMCont
 
 
 @router.callback_query(SimulateFlow.mode_select, F.data == "simulate:precise:more")
-async def simulate_precise_more(callback: CallbackQuery):
-    await callback.answer("Блок +3 вопроса добавим следующим этапом.", show_alert=True)
+async def simulate_precise_more(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(SimulateFlow.precise_standardization)
+    await callback.message.answer(
+        "8️⃣ Насколько стандартизированы ваши процессы?\n"
+        "<i>При высокой стандартизации вы достигнете результатов на 30% быстрее.</i>\n\n"
+        "Выберите вариант:",
+        parse_mode="HTML",
+        reply_markup=simulate_plus3_standardization_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_standardization, F.data.startswith("simulate:plus3:std:"))
+async def simulate_plus3_standardization(callback: CallbackQuery, state: FSMContext):
+    value = callback.data.split(":")[-1]
+    if value not in STANDARDIZATION_LABELS:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    await state.update_data(plus3_standardization=value)
+    await state.set_state(SimulateFlow.precise_automation)
+    await callback.message.answer(
+        "9️⃣ Используете ли вы сейчас какие-то инструменты автоматизации?\n"
+        "<i>У вас уже есть CRM — интеграция займёт 3 месяца вместо 5.</i>\n\n"
+        "Выберите вариант:",
+        parse_mode="HTML",
+        reply_markup=simulate_plus3_automation_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_automation, F.data.startswith("simulate:plus3:auto:"))
+async def simulate_plus3_automation(callback: CallbackQuery, state: FSMContext):
+    value = callback.data.split(":")[-1]
+    if value not in AUTOMATION_LABELS:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    await state.update_data(plus3_automation=value)
+    await state.set_state(SimulateFlow.precise_advisory)
+    await callback.message.answer(
+        "🔟 Какой % клиентов требует нестандартных консультаций / advisory работы?\n"
+        "Выберите вариант:",
+        reply_markup=simulate_plus3_advisory_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_advisory, F.data.startswith("simulate:plus3:advisory:"))
+async def simulate_plus3_advisory(callback: CallbackQuery, state: FSMContext):
+    value = callback.data.split(":")[-1]
+    if value not in ADVISORY_LABELS:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    data = await state.get_data()
+    base_result = calculate_precise_savings(
+        revenue_rub=int(data["precise_revenue"]),
+        accountants_count=int(data["precise_accountants"]),
+        monthly_salary_rub=int(data["precise_salary"]),
+        clients_count=int(data["precise_clients"]),
+        gross_margin_pct=int(data["precise_margin"]),
+        ops_share_band=str(data["precise_ops_share"]),
+        complex_cases_band=str(data["precise_complex_cases"]) if "precise_complex_cases" in data else "some",
+    )
+    refined = refine_precise_savings_with_plus3(
+        base_result,
+        standardization_band=str(data["plus3_standardization"]),
+        automation_band=str(data["plus3_automation"]),
+        advisory_band=value,
+    )
+
+    phase1 = format_mln_range(refined["phase1_min_rub"], refined["phase1_max_rub"]).replace("/год", "")
+    phase2 = format_mln_range(refined["phase2_min_rub"], refined["phase2_max_rub"]).replace("/год", "")
+    future = format_mln_range(refined["future_min_rub"], refined["future_max_rub"]).replace("/год", "")
+
+    await state.update_data(plus3_advisory=value)
+    await state.set_state(SimulateFlow.precise_wait_excel)
+
+    await callback.message.answer(
+        "🎯 <b>Ваши результаты с Aivel:</b>\n"
+        f"Фаза 1 (6 мес): <b>{phase1} экономии</b>\n"
+        f"Фаза 2 (18 мес): <b>{phase2} экономии</b>\n"
+        f"Будущий потенциал: <b>{future}</b>\n\n"
+        "🎯 Серьёзно рассматриваете внедрение? Загрузите Excel — получите полный бизнес-кейс от нашей команды.",
+        parse_mode="HTML",
+        reply_markup=simulate_deep_assessment_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:download")
+async def simulate_deep_download(callback: CallbackQuery):
+    excel_path = find_excel_template()
+    if excel_path is None:
+        await callback.message.answer(SIMULATE_PRO_MISSING_TEXT)
+        await callback.answer("Excel-файл пока не найден", show_alert=True)
+        return
+
+    await callback.message.answer_document(
+        document=FSInputFile(excel_path),
+        caption="📥 Excel-опросник для профессиональной оценки",
+    )
+    await callback.message.answer(WAIT_FILE_TEXT, reply_markup=simulate_deep_assessment_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:sent_email")
+async def simulate_deep_sent_email(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    await add_event(user_id, "simulate_deep_sent_email")
+    await state.set_state(SimulateFlow.mode_select)
+    await callback.message.answer(THANKS_DEEP_TEXT)
+    await callback.answer()
+
+
+@router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:back")
+async def simulate_deep_back(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(SimulateFlow.mode_select)
+    await callback.message.answer("Ну хорошо, ждём вас позже.")
+    await callback.answer()
+
+
+@router.message(SimulateFlow.precise_wait_excel, F.document)
+async def simulate_wait_excel_upload(message: Message, state: FSMContext):
+    document = message.document
+    if not is_excel_filename(document.file_name):
+        await message.answer("Похоже, это не Excel-файл. Пожалуйста, отправьте файл в формате .xlsx/.xls/.xlsm.")
+        return
+
+    user_id = await get_db_user_id(message)
+    await add_event(user_id, "simulate_deep_excel_uploaded", document.file_name)
+    await state.set_state(SimulateFlow.mode_select)
+    await message.answer(THANKS_DEEP_TEXT)
+
+
+@router.message(SimulateFlow.precise_wait_excel)
+async def simulate_wait_excel_invalid(message: Message):
+    await message.answer(
+        "Пожалуйста, отправьте Excel-файл (.xlsx/.xls/.xlsm) или используйте кнопки ниже.",
+        reply_markup=simulate_deep_assessment_keyboard(),
+    )

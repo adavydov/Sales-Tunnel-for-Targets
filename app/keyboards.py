@@ -100,3 +100,45 @@ def simulate_precise_results_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="↩️ Вернуться к выбору режима", callback_data="simulate:mode:menu")],
         ]
     )
+
+
+def simulate_plus3_standardization_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Высокая", callback_data="simulate:plus3:std:high")],
+            [InlineKeyboardButton(text="Средняя", callback_data="simulate:plus3:std:medium")],
+            [InlineKeyboardButton(text="Низкая", callback_data="simulate:plus3:std:low")],
+        ]
+    )
+
+
+def simulate_plus3_automation_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Нет, всё вручную", callback_data="simulate:plus3:auto:none")],
+            [InlineKeyboardButton(text="Частично", callback_data="simulate:plus3:auto:partial")],
+            [InlineKeyboardButton(text="Есть CRM/системы", callback_data="simulate:plus3:auto:crm")],
+            [InlineKeyboardButton(text="Продвинутая (RPA/боты)", callback_data="simulate:plus3:auto:rpa")],
+        ]
+    )
+
+
+def simulate_plus3_advisory_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Менее 5%", callback_data="simulate:plus3:advisory:lt5")],
+            [InlineKeyboardButton(text="5-15%", callback_data="simulate:plus3:advisory:5_15")],
+            [InlineKeyboardButton(text="15-25%", callback_data="simulate:plus3:advisory:15_25")],
+            [InlineKeyboardButton(text="Более 25%", callback_data="simulate:plus3:advisory:gt25")],
+        ]
+    )
+
+
+def simulate_deep_assessment_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📊 Скачать Excel-файл", callback_data="simulate:deep:download")],
+            [InlineKeyboardButton(text="✅ Отправил по почте", callback_data="simulate:deep:sent_email")],
+            [InlineKeyboardButton(text="↩️ Назад", callback_data="simulate:deep:back")],
+        ]
+    )
