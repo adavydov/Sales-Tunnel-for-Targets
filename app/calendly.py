@@ -175,33 +175,7 @@ def book_slot(slot_dt_local: datetime, invitee_name: str, invitee_email: str) ->
         },
     }
 
-    location_kinds = event_type.get("location_kinds")
-    candidate_kinds = list(location_kinds) if isinstance(location_kinds, list) else []
-
-    last_error: CalendlyRequestError | None = None
-    if candidate_kinds:
-        for kind in candidate_kinds:
-            try:
-                payload = dict(base_body)
-                payload["location_configuration"] = {"kind": kind}
-                response = _request("POST", "/invitees", body=payload)
-                resource = response.get("resource", {})
-                return CalendlyBookingResult(
-                    booking_url=resource.get("scheduling_url", ""),
-                    cancel_url=resource.get("cancel_url"),
-                    reschedule_url=resource.get("reschedule_url"),
-                )
-            except CalendlyRequestError as exc:
-                last_error = exc
-                if "invalid_location_choice" not in str(exc):
-                    raise
-
-    try:
-        response = _request("POST", "/invitees", body=base_body)
-    except CalendlyRequestError:
-        if last_error is not None:
-            raise last_error
-        raise
+    response = _request("POST", "/invitees", body=base_body)
 
     resource = response.get("resource", {})
     return CalendlyBookingResult(
