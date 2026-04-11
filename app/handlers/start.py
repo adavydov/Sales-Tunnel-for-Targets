@@ -2,11 +2,9 @@ import logging
 import re
 from datetime import date, datetime, time
 from pathlib import Path
-from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, FSInputFile, Message, ReplyKeyboardRemove
@@ -25,6 +23,7 @@ from app.db import add_event, get_tool_consent, save_funnel_fields, save_profile
 from app.events import EventsConfigError, EventsRequestError, fetch_events, format_events_message
 from app.keyboards import (
     meeting_calendar_keyboard,
+    calendly_meeting_keyboard,
     meeting_registration_check_keyboard,
     meeting_custom_time_keyboard,
     meeting_slots_keyboard,
@@ -149,19 +148,6 @@ MEETING_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 DEFAULT_EXPRESS_ACCOUNTANTS = 15
 DEFAULT_EXPRESS_SALARY = 120000
 
-
-def normalize_public_url(raw_url: str | None) -> str | None:
-    if not raw_url:
-        return None
-    candidate = raw_url.strip().strip("\"'")
-    if not candidate:
-        return None
-    if not candidate.startswith(("http://", "https://")):
-        candidate = f"https://{candidate}"
-    parsed = urlparse(candidate)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return None
-    return candidate
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -573,28 +559,15 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
 async def book_meeting(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.answer(
+        "Откройте Calendly по кнопке ниже 👇",
+        reply_markup=calendly_meeting_keyboard(),
+        disable_web_page_preview=True,
+    )
+    await callback.message.answer(
         "Вы зарегистрировались?",
         reply_markup=meeting_registration_check_keyboard(),
     )
-    calendly_link = normalize_public_url(CALENDLY_PUBLIC_LINK)
-    if not calendly_link:
-        await callback.message.answer(
-            "Не удалось открыть Calendly автоматически — отправляю ссылку кнопкой 👇",
-            reply_markup=calendly_meeting_keyboard(),
-            disable_web_page_preview=True,
-        )
-        await callback.answer("Ссылка Calendly не настроена в CALENDLY_PUBLIC_LINK.", show_alert=True)
-        return
-
-    try:
-        await callback.answer(url=calendly_link)
-    except TelegramBadRequest:
-        await callback.message.answer(
-            "Не удалось открыть Calendly автоматически — отправляю ссылку кнопкой 👇",
-            reply_markup=calendly_meeting_keyboard(),
-            disable_web_page_preview=True,
-        )
-        await callback.answer("Откройте Calendly по кнопке в сообщении.", show_alert=True)
+    await callback.answer()
 
 
 @router.callback_query(F.data == "stub:events")
