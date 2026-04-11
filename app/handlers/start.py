@@ -22,6 +22,7 @@ from app.db import add_event, get_tool_consent, save_funnel_fields, save_profile
 from app.keyboards import (
     calendly_meeting_keyboard,
     meeting_calendar_keyboard,
+    meeting_registration_check_keyboard,
     meeting_custom_time_keyboard,
     meeting_slots_keyboard,
     meeting_waiting_keyboard,
@@ -559,6 +560,27 @@ async def book_meeting(callback: CallbackQuery, state: FSMContext):
         reply_markup=calendly_meeting_keyboard(),
         disable_web_page_preview=True,
     )
+    await callback.message.answer(
+        "Вы зарегистрировались?",
+        reply_markup=meeting_registration_check_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "meeting:external:yes")
+async def meeting_external_confirmed(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    await save_funnel_fields(user_id, meeting_booked=True)
+    await add_event(user_id, "meeting_external_confirmed", "yes")
+    await return_to_base_state(callback.message, state, "Отлично! Спасибо за регистрацию на встречу 🙌")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "meeting:external:no")
+async def meeting_external_declined(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    await add_event(user_id, "meeting_external_confirmed", "no")
+    await return_to_base_state(callback.message, state, "Хорошо, вернули вас в главное меню.")
     await callback.answer()
 
 
