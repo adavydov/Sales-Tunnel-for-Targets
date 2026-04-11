@@ -294,6 +294,13 @@ async def return_to_base_state(message: Message, state: FSMContext, text: str):
     await message.answer(text, reply_markup=persistent_main_keyboard())
 
 
+async def delete_message_safe(message: Message):
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        return
+
+
 async def start_meeting_booking(message: Message, state: FSMContext):
     if not calendly_is_configured():
         await message.answer(
@@ -573,7 +580,7 @@ async def book_meeting(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "stub:events")
 async def show_events(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.answer("⏳ Собираем информацию о ближайших мероприятиях...")
+    loading_message = await callback.message.answer("⏳ Собираем информацию о ближайших мероприятиях...")
 
     try:
         events = fetch_events(
@@ -582,41 +589,17 @@ async def show_events(callback: CallbackQuery):
             sheet_range=GOOGLE_SHEETS_RANGE,
         )
     except EventsConfigError:
+        await delete_message_safe(loading_message)
         await callback.message.answer(
             "⚠️ Раздел мероприятий временно недоступен: не настроен доступ к Google Sheets."
         )
         return
     except EventsRequestError as exc:
+        await delete_message_safe(loading_message)
         await callback.message.answer(f"⚠️ Не удалось получить данные мероприятий. {exc}")
         return
 
-    await callback.message.answer(
-        format_events_message(events),
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
-
-
-@router.callback_query(F.data == "stub:events")
-async def show_events(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.answer("⏳ Собираем информацию о ближайших мероприятиях...")
-
-    try:
-        events = fetch_events(
-            spreadsheet_id=str(GOOGLE_SHEETS_SPREADSHEET_ID or ""),
-            api_key=str(GOOGLE_SHEETS_API_KEY or ""),
-            sheet_range=GOOGLE_SHEETS_RANGE,
-        )
-    except EventsConfigError:
-        await callback.message.answer(
-            "⚠️ Раздел мероприятий временно недоступен: не настроен доступ к Google Sheets."
-        )
-        return
-    except EventsRequestError as exc:
-        await callback.message.answer(f"⚠️ Не удалось получить данные мероприятий. {exc}")
-        return
-
+    await delete_message_safe(loading_message)
     await callback.message.answer(
         format_events_message(events),
         parse_mode="HTML",
@@ -626,6 +609,7 @@ async def show_events(callback: CallbackQuery):
 
 @router.callback_query(F.data == "meeting:external:yes")
 async def meeting_external_confirmed(callback: CallbackQuery, state: FSMContext):
+    await delete_message_safe(callback.message)
     user_id = await get_db_user_id(callback)
     await save_funnel_fields(user_id, meeting_booked=True)
     await add_event(user_id, "meeting_external_confirmed", "yes")
@@ -635,6 +619,7 @@ async def meeting_external_confirmed(callback: CallbackQuery, state: FSMContext)
 
 @router.callback_query(F.data == "meeting:external:no")
 async def meeting_external_declined(callback: CallbackQuery, state: FSMContext):
+    await delete_message_safe(callback.message)
     user_id = await get_db_user_id(callback)
     await add_event(user_id, "meeting_external_confirmed", "no")
     await return_to_base_state(callback.message, state, "Хорошо, вернули вас в главное меню.")
@@ -1080,6 +1065,7 @@ async def simulate_precise_clients_skip_text(message: Message, state: FSMContext
 
 @router.callback_query(SimulateFlow.precise_contacts, F.data == "simulate:contacts:skip")
 async def simulate_contacts_skip(callback: CallbackQuery, state: FSMContext):
+    await delete_message_safe(callback.message)
     await state.update_data(precise_contacts="")
     await state.set_state(SimulateFlow.precise_standardization)
     await ask_precise_standardization_question(callback.message)
@@ -1088,6 +1074,7 @@ async def simulate_contacts_skip(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(SimulateFlow.precise_contacts, F.data == "simulate:contacts:share")
 async def simulate_contacts_share(callback: CallbackQuery, state: FSMContext):
+    await delete_message_safe(callback.message)
     await state.set_state(SimulateFlow.precise_contact_name)
     await callback.message.answer(
         "Введите ваше имя:",
