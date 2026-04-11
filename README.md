@@ -66,6 +66,10 @@ python3 -m pip install aiogram python-dotenv "psycopg[binary]" APScheduler
 4. Создать .env файл:
 BOT_TOKEN=<ваш_токен_бота>
 DATABASE_URL=postgresql://bot_user:<сложный_пароль>@localhost:5432/sales_tunnel_for_targets_bot_db
+CALENDLY_PUBLIC_LINK=https://calendly.com/4davyd0vcreate/30min
+GOOGLE_SHEETS_API_KEY=<google_api_key_для_sheets>
+GOOGLE_SHEETS_SPREADSHEET_ID=<id_таблицы>
+GOOGLE_SHEETS_RANGE=Content-events!A2:F
 
 ## Настройка PostgreSQL
 
