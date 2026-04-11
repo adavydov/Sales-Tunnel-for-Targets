@@ -24,7 +24,6 @@ from app.config import GOOGLE_SHEETS_API_KEY, GOOGLE_SHEETS_RANGE, GOOGLE_SHEETS
 from app.db import add_event, get_tool_consent, save_funnel_fields, save_profile_field, upsert_user
 from app.events import EventsConfigError, EventsRequestError, fetch_events, format_events_message
 from app.keyboards import (
-    calendly_meeting_keyboard,
     meeting_calendar_keyboard,
     meeting_registration_check_keyboard,
     meeting_custom_time_keyboard,
