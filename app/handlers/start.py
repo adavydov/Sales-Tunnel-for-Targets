@@ -2,7 +2,6 @@ import logging
 import re
 from datetime import date, datetime, time
 from pathlib import Path
-from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
@@ -25,6 +24,7 @@ from app.db import add_event, get_tool_consent, save_funnel_fields, save_profile
 from app.events import EventsConfigError, EventsRequestError, fetch_events, format_events_message
 from app.keyboards import (
     meeting_calendar_keyboard,
+    calendly_meeting_keyboard,
     meeting_registration_check_keyboard,
     meeting_custom_time_keyboard,
     meeting_slots_keyboard,
@@ -149,19 +149,6 @@ MEETING_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 DEFAULT_EXPRESS_ACCOUNTANTS = 15
 DEFAULT_EXPRESS_SALARY = 120000
 
-
-def normalize_public_url(raw_url: str | None) -> str | None:
-    if not raw_url:
-        return None
-    candidate = raw_url.strip().strip("\"'")
-    if not candidate:
-        return None
-    if not candidate.startswith(("http://", "https://")):
-        candidate = f"https://{candidate}"
-    parsed = urlparse(candidate)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return None
-    return candidate
 
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
@@ -306,6 +293,13 @@ async def ensure_simulate_consent(callback: CallbackQuery, state: FSMContext) ->
 async def return_to_base_state(message: Message, state: FSMContext, text: str):
     await state.clear()
     await message.answer(text, reply_markup=persistent_main_keyboard())
+
+
+async def delete_message_safe(message: Message):
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        return
 
 
 async def start_meeting_booking(message: Message, state: FSMContext):
@@ -573,34 +567,21 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
 async def book_meeting(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.answer(
+        "Откройте Calendly по кнопке ниже 👇",
+        reply_markup=calendly_meeting_keyboard(),
+        disable_web_page_preview=True,
+    )
+    await callback.message.answer(
         "Вы зарегистрировались?",
         reply_markup=meeting_registration_check_keyboard(),
     )
-    calendly_link = normalize_public_url(CALENDLY_PUBLIC_LINK)
-    if not calendly_link:
-        await callback.message.answer(
-            "Не удалось открыть Calendly автоматически — отправляю ссылку кнопкой 👇",
-            reply_markup=calendly_meeting_keyboard(),
-            disable_web_page_preview=True,
-        )
-        await callback.answer("Ссылка Calendly не настроена в CALENDLY_PUBLIC_LINK.", show_alert=True)
-        return
-
-    try:
-        await callback.answer(url=calendly_link)
-    except TelegramBadRequest:
-        await callback.message.answer(
-            "Не удалось открыть Calendly автоматически — отправляю ссылку кнопкой 👇",
-            reply_markup=calendly_meeting_keyboard(),
-            disable_web_page_preview=True,
-        )
-        await callback.answer("Откройте Calendly по кнопке в сообщении.", show_alert=True)
+    await callback.answer()
 
 
 @router.callback_query(F.data == "stub:events")
 async def show_events(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.answer("⏳ Собираем информацию о ближайших мероприятиях...")
+    loading_message = await callback.message.answer("⏳ Собираем информацию о ближайших мероприятиях...")
 
     try:
         events = fetch_events(
@@ -609,41 +590,17 @@ async def show_events(callback: CallbackQuery):
             sheet_range=GOOGLE_SHEETS_RANGE,
         )
     except EventsConfigError:
+        await delete_message_safe(loading_message)
         await callback.message.answer(
             "⚠️ Раздел мероприятий временно недоступен: не настроен доступ к Google Sheets."
         )
         return
     except EventsRequestError as exc:
+        await delete_message_safe(loading_message)
         await callback.message.answer(f"⚠️ Не удалось получить данные мероприятий. {exc}")
         return
 
-    await callback.message.answer(
-        format_events_message(events),
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
-
-
-@router.callback_query(F.data == "stub:events")
-async def show_events(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.answer("⏳ Собираем информацию о ближайших мероприятиях...")
-
-    try:
-        events = fetch_events(
-            spreadsheet_id=str(GOOGLE_SHEETS_SPREADSHEET_ID or ""),
-            api_key=str(GOOGLE_SHEETS_API_KEY or ""),
-            sheet_range=GOOGLE_SHEETS_RANGE,
-        )
-    except EventsConfigError:
-        await callback.message.answer(
-            "⚠️ Раздел мероприятий временно недоступен: не настроен доступ к Google Sheets."
-        )
-        return
-    except EventsRequestError as exc:
-        await callback.message.answer(f"⚠️ Не удалось получить данные мероприятий. {exc}")
-        return
-
+    await delete_message_safe(loading_message)
     await callback.message.answer(
         format_events_message(events),
         parse_mode="HTML",
@@ -653,6 +610,7 @@ async def show_events(callback: CallbackQuery):
 
 @router.callback_query(F.data == "meeting:external:yes")
 async def meeting_external_confirmed(callback: CallbackQuery, state: FSMContext):
+    await delete_message_safe(callback.message)
     user_id = await get_db_user_id(callback)
     await save_funnel_fields(user_id, meeting_booked=True)
     await add_event(user_id, "meeting_external_confirmed", "yes")
@@ -662,6 +620,7 @@ async def meeting_external_confirmed(callback: CallbackQuery, state: FSMContext)
 
 @router.callback_query(F.data == "meeting:external:no")
 async def meeting_external_declined(callback: CallbackQuery, state: FSMContext):
+    await delete_message_safe(callback.message)
     user_id = await get_db_user_id(callback)
     await add_event(user_id, "meeting_external_confirmed", "no")
     await return_to_base_state(callback.message, state, "Хорошо, вернули вас в главное меню.")
@@ -1107,6 +1066,7 @@ async def simulate_precise_clients_skip_text(message: Message, state: FSMContext
 
 @router.callback_query(SimulateFlow.precise_contacts, F.data == "simulate:contacts:skip")
 async def simulate_contacts_skip(callback: CallbackQuery, state: FSMContext):
+    await delete_message_safe(callback.message)
     await state.update_data(precise_contacts="")
     await state.set_state(SimulateFlow.precise_standardization)
     await ask_precise_standardization_question(callback.message)
@@ -1115,6 +1075,7 @@ async def simulate_contacts_skip(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(SimulateFlow.precise_contacts, F.data == "simulate:contacts:share")
 async def simulate_contacts_share(callback: CallbackQuery, state: FSMContext):
+    await delete_message_safe(callback.message)
     await state.set_state(SimulateFlow.precise_contact_name)
     await callback.message.answer(
         "Введите ваше имя:",
