@@ -25,7 +25,7 @@ def persistent_main_keyboard() -> ReplyKeyboardMarkup:
 def menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Записаться на встречу", callback_data="stub:book_meeting")],
+            [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
             [InlineKeyboardButton(text="Встретиться на мероприятиях", callback_data="stub:events")],
             [InlineKeyboardButton(text="Продукты и услуги", callback_data="stub:products")],
             [InlineKeyboardButton(text="Видео и кейсы (скоро)", callback_data="stub:videos")],
