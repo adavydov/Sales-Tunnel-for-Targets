@@ -308,3 +308,12 @@ def calendly_meeting_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Открыть Calendly", url="https://calendly.com/4davyd0vcreate/30min")],
         ]
     )
+
+
+def meeting_registration_check_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Да, зарегистрировался", callback_data="meeting:external:yes")],
+            [InlineKeyboardButton(text="Нет, передумал", callback_data="meeting:external:no")],
+        ]
+    )
