@@ -590,6 +590,33 @@ async def show_events(callback: CallbackQuery):
     )
 
 
+@router.callback_query(F.data == "stub:events")
+async def show_events(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer("⏳ Собираем информацию о ближайших мероприятиях...")
+
+    try:
+        events = fetch_events(
+            spreadsheet_id=str(GOOGLE_SHEETS_SPREADSHEET_ID or ""),
+            api_key=str(GOOGLE_SHEETS_API_KEY or ""),
+            sheet_range=GOOGLE_SHEETS_RANGE,
+        )
+    except EventsConfigError:
+        await callback.message.answer(
+            "⚠️ Раздел мероприятий временно недоступен: не настроен доступ к Google Sheets."
+        )
+        return
+    except EventsRequestError as exc:
+        await callback.message.answer(f"⚠️ Не удалось получить данные мероприятий. {exc}")
+        return
+
+    await callback.message.answer(
+        format_events_message(events),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+
+
 @router.callback_query(F.data == "meeting:external:yes")
 async def meeting_external_confirmed(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
