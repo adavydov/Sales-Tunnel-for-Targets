@@ -7,6 +7,18 @@ from aiogram.types import (
     KeyboardButton,
     ReplyKeyboardMarkup,
 )
+from app.config import CALENDLY_PUBLIC_LINK
+
+
+def _safe_calendly_link() -> str:
+    raw = (CALENDLY_PUBLIC_LINK or "").strip()
+    if raw.startswith(("\"", "'")) and raw.endswith(("\"", "'")) and len(raw) > 1:
+        raw = raw[1:-1].strip()
+    if not raw:
+        return "https://calendly.com/4davyd0vcreate/30min"
+    if not raw.startswith(("http://", "https://")):
+        raw = f"https://{raw}"
+    return raw
 
 
 def persistent_main_keyboard() -> ReplyKeyboardMarkup:
@@ -25,7 +37,7 @@ def persistent_main_keyboard() -> ReplyKeyboardMarkup:
 def menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Записаться на встречу", callback_data="stub:book_meeting")],
+            [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
             [InlineKeyboardButton(text="Встретиться на мероприятиях", callback_data="stub:events")],
             [InlineKeyboardButton(text="Продукты и услуги", callback_data="stub:products")],
             [InlineKeyboardButton(text="Видео и кейсы (скоро)", callback_data="stub:videos")],
@@ -305,7 +317,7 @@ def meeting_waiting_keyboard() -> InlineKeyboardMarkup:
 def calendly_meeting_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Открыть Calendly", url="https://calendly.com/4davyd0vcreate/30min")],
+            [InlineKeyboardButton(text="📅 Открыть Calendly", url=_safe_calendly_link())],
         ]
     )
 
