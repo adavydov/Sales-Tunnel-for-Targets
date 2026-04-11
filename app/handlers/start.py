@@ -19,7 +19,7 @@ from app.calendly import (
     is_configured as calendly_is_configured,
     is_slot_available,
 )
-from app.config import CALENDLY_PUBLIC_LINK, MEETING_TIMEZONE
+from app.config import MEETING_TIMEZONE
 from app.config import GOOGLE_SHEETS_API_KEY, GOOGLE_SHEETS_RANGE, GOOGLE_SHEETS_SPREADSHEET_ID
 from app.db import add_event, get_tool_consent, save_funnel_fields, save_profile_field, upsert_user
 from app.events import EventsConfigError, EventsRequestError, fetch_events, format_events_message
@@ -595,6 +595,33 @@ async def book_meeting(callback: CallbackQuery, state: FSMContext):
             disable_web_page_preview=True,
         )
         await callback.answer("Откройте Calendly по кнопке в сообщении.", show_alert=True)
+
+
+@router.callback_query(F.data == "stub:events")
+async def show_events(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer("⏳ Собираем информацию о ближайших мероприятиях...")
+
+    try:
+        events = fetch_events(
+            spreadsheet_id=str(GOOGLE_SHEETS_SPREADSHEET_ID or ""),
+            api_key=str(GOOGLE_SHEETS_API_KEY or ""),
+            sheet_range=GOOGLE_SHEETS_RANGE,
+        )
+    except EventsConfigError:
+        await callback.message.answer(
+            "⚠️ Раздел мероприятий временно недоступен: не настроен доступ к Google Sheets."
+        )
+        return
+    except EventsRequestError as exc:
+        await callback.message.answer(f"⚠️ Не удалось получить данные мероприятий. {exc}")
+        return
+
+    await callback.message.answer(
+        format_events_message(events),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
 
 
 @router.callback_query(F.data == "stub:events")
