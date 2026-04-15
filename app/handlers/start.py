@@ -738,7 +738,7 @@ async def simulate_mode_express(callback: CallbackQuery, state: FSMContext):
         "• Акты сверки\n"
         "• Работа с банк-клиентом\n\n"
         "Напишите свой ответ сообщением.\n"
-        f"<i>Например: {DEFAULT_EXPRESS_ACCOUNTANTS}</i>",
+        f"Например: {DEFAULT_EXPRESS_ACCOUNTANTS}",
         parse_mode="HTML",
         reply_markup=simulate_skip_question_keyboard("accountants"),
     )
@@ -797,9 +797,9 @@ async def simulate_express_accountants(message: Message, state: FSMContext):
         await save_funnel_fields(int(user_id), accountants_count=accountants)
     await state.set_state(SimulateFlow.express_salary)
     await message.answer(
-        "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n"
+        "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n\n"
         "Напишите свой ответ сообщением.\n"
-        f"<i>Например: {DEFAULT_EXPRESS_SALARY}</i>",
+        f"Например: {DEFAULT_EXPRESS_SALARY}",
         parse_mode="HTML",
         reply_markup=simulate_skip_question_keyboard("salary"),
     )
@@ -813,9 +813,9 @@ async def simulate_express_skip_accountants(callback: CallbackQuery, state: FSMC
         await save_funnel_fields(int(user_id), accountants_count=DEFAULT_EXPRESS_ACCOUNTANTS)
     await state.set_state(SimulateFlow.express_salary)
     await callback.message.answer(
-        "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n"
+        "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n\n"
         "Напишите свой ответ сообщением.\n"
-        f"<i>Например: {DEFAULT_EXPRESS_SALARY}</i>",
+        f"Например: {DEFAULT_EXPRESS_SALARY}",
         parse_mode="HTML",
         reply_markup=simulate_skip_question_keyboard("salary"),
     )
