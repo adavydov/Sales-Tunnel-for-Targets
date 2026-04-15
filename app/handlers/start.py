@@ -297,7 +297,7 @@ async def delete_message_safe(message: Message):
     try:
         await message.delete()
     except TelegramBadRequest:
-        return
+        return 
 
 
 async def start_meeting_booking(message: Message, state: FSMContext):
