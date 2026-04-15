@@ -56,6 +56,20 @@ def _extract_by_index(row: list[str], idx: int | None) -> str:
     return str(row[idx]).strip()
 
 
+def _normalize_sheet_range(sheet_range: str) -> str:
+    if "!" not in sheet_range:
+        return sheet_range
+    sheet_name, cell_range = sheet_range.split("!", 1)
+    stripped = sheet_name.strip()
+    if stripped.startswith("'") and stripped.endswith("'"):
+        return sheet_range
+
+    has_special_chars = any(not char.isascii() or char in {" ", "-"} for char in stripped)
+    if has_special_chars:
+        return f"'{stripped}'!{cell_range}"
+    return sheet_range
+
+
 def _parse_send_at(date_raw: str, time_raw: str, tz_name: str) -> datetime | None:
     if not date_raw:
         return None
@@ -99,7 +113,7 @@ def _build_keyboard(post: PushPost) -> InlineKeyboardMarkup | None:
 def fetch_push_posts() -> list[PushPost]:
     spreadsheet_id = CONTENT_SHEETS_SPREADSHEET_ID
     api_key = CONTENT_SHEETS_API_KEY
-    sheet_range = CONTENT_SHEETS_RANGE
+    sheet_range = _normalize_sheet_range(CONTENT_SHEETS_RANGE)
 
     if not spreadsheet_id or not api_key:
         logger.warning("Push content sheets are not configured.")
@@ -115,7 +129,7 @@ def fetch_push_posts() -> list[PushPost]:
         with urlopen(url, timeout=15) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to fetch push content: %s", exc)
+        logger.warning("Failed to fetch push content (range=%s): %s", sheet_range, exc)
         return []
 
     rows = payload.get("values", [])
