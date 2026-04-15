@@ -27,7 +27,10 @@ class EventItem:
 
 
 def _normalize_header(value: str) -> str:
-    return value.strip().lower().replace(" ", "").replace("_", "")
+    normalized = value.strip().lower()
+    for char in (" ", "_", "-", "?", "(", ")", ":", "/"):
+        normalized = normalized.replace(char, "")
+    return normalized
 
 
 def _is_active(value: str) -> bool:
@@ -75,7 +78,7 @@ def fetch_events(spreadsheet_id: str, api_key: str, sheet_range: str, timeout: i
     normalized_headers = [_normalize_header(str(cell)) for cell in rows[0]]
     has_header = any(
         key in normalized_headers
-        for key in ("name", "event", "мероприятие", "active", "show?", "calendly", "calendlylink")
+        for key in ("name", "event", "мероприятие", "active", "show", "calendly", "calendlylink")
     )
 
     if has_header:
@@ -85,8 +88,8 @@ def fetch_events(spreadsheet_id: str, api_key: str, sheet_range: str, timeout: i
         time_idx = _first_present(header_map, "timeanddate", "datetime", "date", "дата")
         where_idx = _first_present(header_map, "where", "location", "место")
         description_idx = _first_present(header_map, "supporttext", "description", "описание")
-        link_idx = _first_present(header_map, "link", "url", "registrationlink", "eventlink")
-        active_idx = _first_present(header_map, "active", "show?", "show")
+        link_idx = _first_present(header_map, "link", "url", "registrationlink", "eventlink", "linktoevent")
+        active_idx = _first_present(header_map, "active", "show")
         calendly_idx = _first_present(header_map, "calendly", "calendlylink", "meetinglink")
 
         for row in rows[1:]:
@@ -135,13 +138,6 @@ def fetch_events(spreadsheet_id: str, api_key: str, sheet_range: str, timeout: i
     return events
 
 
-def _truncate(text: str, max_len: int = 220) -> str:
-    normalized = " ".join(text.split())
-    if len(normalized) <= max_len:
-        return normalized
-    return normalized[: max_len - 1].rstrip() + "…"
-
-
 def _format_date_header() -> str:
     now = datetime.now().strftime("%d.%m.%Y")
     return f"📅 <b>Где можно встретиться на мероприятиях</b>\n<i>Актуально на {now}</i>"
@@ -166,7 +162,7 @@ def format_events_message(events: list[EventItem]) -> str:
         )
 
         if event.support_text:
-            lines.append(f"📝 <b>Описание:</b> {html.escape(_truncate(event.support_text))}")
+            lines.append(f"📝 <b>Описание:</b> {html.escape(event.support_text)}")
         if event.link:
             safe_link = html.escape(event.link, quote=True)
             lines.append(f"🔗 <a href=\"{safe_link}\">Регистрация / детали</a>")
