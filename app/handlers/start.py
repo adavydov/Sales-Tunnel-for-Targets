@@ -501,7 +501,7 @@ async def book_meeting(callback: CallbackQuery, state: FSMContext):
         disable_web_page_preview=True,
     )
     await callback.message.answer(
-        "Вы зарегистрировались?",
+        "Вам удалось записаться на встречу?",
         reply_markup=meeting_registration_check_keyboard(),
     )
     await callback.answer()
