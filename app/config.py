@@ -11,7 +11,7 @@ CALENDLY_PUBLIC_LINK = os.getenv("CALENDLY_PUBLIC_LINK", "https://calendly.com/4
 MEETING_TIMEZONE = os.getenv("MEETING_TIMEZONE", "Europe/Moscow")
 GOOGLE_SHEETS_API_KEY = os.getenv("GOOGLE_SHEETS_API_KEY")
 GOOGLE_SHEETS_SPREADSHEET_ID = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID")
-GOOGLE_SHEETS_RANGE = os.getenv("GOOGLE_SHEETS_RANGE", "Content-events!A2:F")
+GOOGLE_SHEETS_RANGE = os.getenv("GOOGLE_SHEETS_RANGE", "Content-events!A1:H")
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN не найден в .env")
