@@ -70,6 +70,10 @@ CALENDLY_PUBLIC_LINK=https://calendly.com/4davyd0vcreate/30min
 GOOGLE_SHEETS_API_KEY=<google_api_key_для_sheets>
 GOOGLE_SHEETS_SPREADSHEET_ID=<id_таблицы>
 GOOGLE_SHEETS_RANGE=Content-events!A2:F
+EXPORT_SHEETS_API_KEY=<google_api_key_для_sheets>
+EXPORT_SHEETS_SPREADSHEET_ID=<id_таблицы_для_выгрузки>
+EXPORT_SHEETS_RANGE=users_export!A1:AB
+EXPORT_SYNC_INTERVAL_MINUTES=5
 
 ## Настройка PostgreSQL
 
