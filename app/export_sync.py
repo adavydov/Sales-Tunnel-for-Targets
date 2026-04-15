@@ -132,6 +132,8 @@ def setup_export_scheduler(scheduler: AsyncIOScheduler):
         trigger="interval",
         minutes=EXPORT_SYNC_INTERVAL_MINUTES,
         id="users_export_interval",
+        coalesce=True,
+        misfire_grace_time=120,
         replace_existing=True,
     )
     scheduler.add_job(
@@ -139,5 +141,6 @@ def setup_export_scheduler(scheduler: AsyncIOScheduler):
         trigger="date",
         run_date=datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE)) + timedelta(seconds=20),
         id="users_export_startup",
+        misfire_grace_time=120,
         replace_existing=True,
     )
