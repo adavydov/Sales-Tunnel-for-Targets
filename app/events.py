@@ -28,6 +28,7 @@ class EventItem:
 
 def _normalize_header(value: str) -> str:
     normalized = value.strip().lower()
+    normalized = normalized.replace("&", "and")
     for char in (" ", "_", "-", "?", "(", ")", ":", "/"):
         normalized = normalized.replace(char, "")
     return normalized
@@ -85,7 +86,7 @@ def fetch_events(spreadsheet_id: str, api_key: str, sheet_range: str, timeout: i
         header_map = {normalized: idx for idx, normalized in enumerate(normalized_headers)}
 
         name_idx = _first_present(header_map, "name", "event", "мероприятие", "название")
-        time_idx = _first_present(header_map, "timeanddate", "datetime", "date", "дата")
+        time_idx = _first_present(header_map, "timeanddate", "timedate", "datetime", "date", "дата")
         where_idx = _first_present(header_map, "where", "location", "место")
         description_idx = _first_present(header_map, "supporttext", "description", "описание")
         link_idx = _first_present(header_map, "link", "url", "registrationlink", "eventlink", "linktoevent")
