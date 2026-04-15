@@ -44,13 +44,12 @@ from app.keyboards import (
     simulate_results_keyboard,
     simulate_skip_question_keyboard,
     tool_consent_keyboard,
-    website_optional_keyboard,
 )
 from app.scoring import (
     calculate_express_operation_savings,
     calculate_precise_savings_from_express,
 )
-from app.states import MeetingBookingFlow, OnboardingFlow, SimulateFlow, ToolConsentFlow
+from app.states import MeetingBookingFlow, SimulateFlow, ToolConsentFlow
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -402,77 +401,8 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
 async def cmd_start(message: Message, state: FSMContext):
     user_id = await get_db_user_id(message)
     await state.clear()
-    await state.update_data(db_user_id=user_id)
-    await state.set_state(OnboardingFlow.company)
-
     await add_event(user_id, "start")
-    await message.answer(
-        "Введите название вашей компании.",
-        reply_markup=ReplyKeyboardRemove(),
-    )
-
-
-@router.message(OnboardingFlow.company, F.text)
-async def onboarding_company(message: Message, state: FSMContext):
-    company = message.text.strip()
-    if not company:
-        await message.answer("Название компании не может быть пустым. Введите его текстом.")
-        return
-
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-
-    await save_profile_field(user_id, "company", company)
-    await add_event(user_id, "onboarding_company_saved", company)
-
-    await state.set_state(OnboardingFlow.website)
-    await message.answer(
-        "Прикрепите www-ссылку на сайт компании.",
-        reply_markup=website_optional_keyboard(),
-    )
-
-
-@router.message(OnboardingFlow.company)
-async def onboarding_company_invalid(message: Message):
-    await message.answer("Пожалуйста, введите название компании текстом.")
-
-
-@router.message(OnboardingFlow.website, F.text)
-async def onboarding_website(message: Message, state: FSMContext):
-    website_raw = message.text.strip()
-    website_value = website_raw
-
-    if not URL_RE.match(website_raw):
-        await message.answer("Ссылка выглядит некорректно. Пример: www.company.com или https://company.com")
-        return
-
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-
-    await save_profile_field(user_id, "company_website", website_value)
-    await add_event(user_id, "onboarding_website_saved", website_value)
-
-    await state.clear()
     await send_onboarding_complete(message)
-
-
-@router.message(OnboardingFlow.website)
-async def onboarding_website_invalid(message: Message):
-    await message.answer("Пожалуйста, отправьте ссылку текстом или нажмите кнопку «Нет сайта».")
-
-
-@router.callback_query(OnboardingFlow.website, F.data == "onboarding:no_site")
-async def onboarding_no_site(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-
-    await save_profile_field(user_id, "company_website", "")
-    await add_event(user_id, "onboarding_website_saved", "")
-
-    await state.clear()
-    await callback.message.delete()
-    await send_onboarding_complete(callback.message)
-    await callback.answer()
 
 
 @router.message(StateFilter(None), F.text == "Меню бота")
@@ -807,7 +737,8 @@ async def simulate_mode_express(callback: CallbackQuery, state: FSMContext):
         "• Первичные документы\n"
         "• Акты сверки\n"
         "• Работа с банк-клиентом\n\n"
-        f"<i>Например: {DEFAULT_EXPRESS_ACCOUNTANTS}</i>",
+        "Напишите свой ответ сообщением.\n"
+        f"Например: {DEFAULT_EXPRESS_ACCOUNTANTS}",
         parse_mode="HTML",
         reply_markup=simulate_skip_question_keyboard("accountants"),
     )
@@ -866,8 +797,9 @@ async def simulate_express_accountants(message: Message, state: FSMContext):
         await save_funnel_fields(int(user_id), accountants_count=accountants)
     await state.set_state(SimulateFlow.express_salary)
     await message.answer(
-        "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n"
-        f"<i>Например: {DEFAULT_EXPRESS_SALARY}</i>",
+        "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n\n"
+        "Напишите свой ответ сообщением.\n"
+        f"Например: {DEFAULT_EXPRESS_SALARY}",
         parse_mode="HTML",
         reply_markup=simulate_skip_question_keyboard("salary"),
     )
@@ -881,8 +813,9 @@ async def simulate_express_skip_accountants(callback: CallbackQuery, state: FSMC
         await save_funnel_fields(int(user_id), accountants_count=DEFAULT_EXPRESS_ACCOUNTANTS)
     await state.set_state(SimulateFlow.express_salary)
     await callback.message.answer(
-        "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n"
-        f"<i>Например: {DEFAULT_EXPRESS_SALARY}</i>",
+        "2️⃣ Средняя зарплата бухгалтера (₽/мес, включая налоги)?\n\n"
+        "Напишите свой ответ сообщением.\n"
+        f"Например: {DEFAULT_EXPRESS_SALARY}",
         parse_mode="HTML",
         reply_markup=simulate_skip_question_keyboard("salary"),
     )
@@ -926,7 +859,7 @@ async def simulate_precise_clients(message: Message, state: FSMContext):
         await save_funnel_fields(int(user_id), active_clients_count=clients)
     await state.set_state(SimulateFlow.precise_contacts)
     await message.answer(
-        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон)\n",
+        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон, Компания, Вебсайт)\n",
         parse_mode="HTML",
         reply_markup=simulate_contacts_choice_keyboard(),
     )
@@ -1006,7 +939,9 @@ async def simulate_plus3_automation(callback: CallbackQuery, state: FSMContext):
         await save_funnel_fields(int(user_id), automation_level=normalized)
     await state.set_state(SimulateFlow.precise_margin)
     await callback.message.answer(
-        "7️⃣ Текущая валовая маржа (%)?\n",
+        "7️⃣ Текущая валовая маржа (%)?\n\n"
+        "Напишите свой ответ сообщением.\n"
+        "Например: 35",
         parse_mode="HTML",
         reply_markup=simulate_precise_skip_keyboard("simulate:precise:margin:skip"),
     )
@@ -1027,7 +962,9 @@ async def simulate_plus3_advisory(callback: CallbackQuery, state: FSMContext):
         await save_funnel_fields(int(user_id), advisory_band=normalized)
     await state.set_state(SimulateFlow.precise_clients)
     await callback.message.answer(
-        "4️⃣ Количество активных клиентов?\n",
+        "4️⃣ Количество активных клиентов?\n\n"
+        "Напишите свой ответ сообщением.\n"
+        "Например: 120",
         parse_mode="HTML",
         reply_markup=simulate_precise_skip_keyboard("simulate:precise:clients:skip"),
     )
@@ -1042,7 +979,7 @@ async def simulate_precise_clients_skip(callback: CallbackQuery, state: FSMConte
         await save_funnel_fields(int(user_id), active_clients_count=0)
     await state.set_state(SimulateFlow.precise_contacts)
     await callback.message.answer(
-        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон)\n",
+        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон, Компания, Вебсайт)\n",
         parse_mode="HTML",
         reply_markup=simulate_contacts_choice_keyboard(),
     )
@@ -1057,7 +994,7 @@ async def simulate_precise_clients_skip_text(message: Message, state: FSMContext
         await save_funnel_fields(int(user_id), active_clients_count=0)
     await state.set_state(SimulateFlow.precise_contacts)
     await message.answer(
-        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон)\n",
+        "Поделитесь с нами вашими контактными данными (Ваше имя, Email, Телефон, Компания, Вебсайт)\n",
         parse_mode="HTML",
         reply_markup=simulate_contacts_choice_keyboard(),
     )
@@ -1146,15 +1083,11 @@ async def simulate_contact_phone(message: Message, state: FSMContext):
     user_id = (await state.get_data()).get("db_user_id")
     if user_id:
         await save_funnel_fields(int(user_id), contact_phone=phone)
-    data = await state.get_data()
-    await state.update_data(
-        precise_contacts=(
-            f"name={data.get('contact_name', '')}|email={data.get('contact_email', '')}|"
-            f"phone={message.text.strip()}"
-        ),
+    await state.set_state(SimulateFlow.precise_contact_company)
+    await message.answer(
+        "Введите название вашей компании:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:company:skip"),
     )
-    await state.set_state(SimulateFlow.precise_standardization)
-    await ask_precise_standardization_question(message)
 
 
 @router.callback_query(SimulateFlow.precise_contact_phone, F.data == "simulate:contacts:phone:skip")
@@ -1163,10 +1096,77 @@ async def simulate_contact_phone_skip(callback: CallbackQuery, state: FSMContext
     user_id = (await state.get_data()).get("db_user_id")
     if user_id:
         await save_funnel_fields(int(user_id), contact_phone="")
+    await state.set_state(SimulateFlow.precise_contact_company)
+    await callback.message.answer(
+        "Введите название вашей компании:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:company:skip"),
+    )
+    await callback.answer()
+
+
+@router.message(SimulateFlow.precise_contact_company, F.text)
+async def simulate_contact_company(message: Message, state: FSMContext):
+    company = message.text.strip()
+    await state.update_data(contact_company=company)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_profile_field(int(user_id), "company", company)
+    await state.set_state(SimulateFlow.precise_contact_website)
+    await message.answer(
+        "Введите сайт вашей компании:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:website:skip"),
+    )
+
+
+@router.callback_query(SimulateFlow.precise_contact_company, F.data == "simulate:contacts:company:skip")
+async def simulate_contact_company_skip(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(contact_company="")
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_profile_field(int(user_id), "company", "")
+    await state.set_state(SimulateFlow.precise_contact_website)
+    await callback.message.answer(
+        "Введите сайт вашей компании:",
+        reply_markup=simulate_contact_field_keyboard("simulate:contacts:website:skip"),
+    )
+    await callback.answer()
+
+
+@router.message(SimulateFlow.precise_contact_website, F.text)
+async def simulate_contact_website(message: Message, state: FSMContext):
+    website_raw = message.text.strip()
+    if not URL_RE.match(website_raw):
+        await message.answer("Ссылка выглядит некорректно. Пример: www.company.com или https://company.com")
+        return
+
+    await state.update_data(contact_website=website_raw)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_profile_field(int(user_id), "company_website", website_raw)
+
     data = await state.get_data()
     await state.update_data(
         precise_contacts=(
-            f"name={data.get('contact_name', '')}|email={data.get('contact_email', '')}|phone="
+            f"name={data.get('contact_name', '')}|email={data.get('contact_email', '')}|"
+            f"phone={data.get('contact_phone', '')}|company={data.get('contact_company', '')}|"
+            f"website={website_raw}"
+        ),
+    )
+    await state.set_state(SimulateFlow.precise_standardization)
+    await ask_precise_standardization_question(message)
+
+
+@router.callback_query(SimulateFlow.precise_contact_website, F.data == "simulate:contacts:website:skip")
+async def simulate_contact_website_skip(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(contact_website="")
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_profile_field(int(user_id), "company_website", "")
+    data = await state.get_data()
+    await state.update_data(
+        precise_contacts=(
+            f"name={data.get('contact_name', '')}|email={data.get('contact_email', '')}|"
+            f"phone={data.get('contact_phone', '')}|company={data.get('contact_company', '')}|website="
         ),
     )
     await state.set_state(SimulateFlow.precise_standardization)
