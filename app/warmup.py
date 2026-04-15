@@ -21,6 +21,7 @@ from app.config import (
 from app.db import add_event, get_all_users_for_push, log_push_delivery, was_push_sent
 
 logger = logging.getLogger(__name__)
+WELCOME_POST_DELAY_MINUTES = 1  # test mode: send POST-001 shortly after registration
 
 
 @dataclass
@@ -211,7 +212,7 @@ async def send_welcome_post(bot: Bot):
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=ZoneInfo("UTC"))
         created_local = created_at.astimezone(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE))
-        if now >= created_local + timedelta(hours=1):
+        if now >= created_local + timedelta(minutes=WELCOME_POST_DELAY_MINUTES):
             await _send_post_to_user(bot, user, welcome)
 
 
