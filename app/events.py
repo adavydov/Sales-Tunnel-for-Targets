@@ -23,6 +23,31 @@ class EventItem:
     where: str
     support_text: str
     link: str
+    calendly_link: str
+
+
+def _normalize_header(value: str) -> str:
+    return value.strip().lower().replace(" ", "").replace("_", "")
+
+
+def _is_active(value: str) -> bool:
+    normalized = value.strip().lower()
+    return normalized in {"yes", "y", "да", "true", "1"}
+
+
+def _extract_by_index(row: list[str], idx: int | None) -> str:
+    if idx is None:
+        return ""
+    if idx < 0 or idx >= len(row):
+        return ""
+    return str(row[idx]).strip()
+
+
+def _first_present(mapping: dict[str, int], *keys: str) -> int | None:
+    for key in keys:
+        if key in mapping:
+            return mapping[key]
+    return None
 
 
 def fetch_events(spreadsheet_id: str, api_key: str, sheet_range: str, timeout: int = 10) -> list[EventItem]:
@@ -42,25 +67,70 @@ def fetch_events(spreadsheet_id: str, api_key: str, sheet_range: str, timeout: i
         raise EventsRequestError(f"Не удалось загрузить мероприятия: {exc}") from exc
 
     rows = payload.get("values", [])
+    if not rows:
+        return []
+
     events: list[EventItem] = []
-    for row in rows:
-        if not row:
-            continue
 
-        values = list(row) + [""] * max(0, 6 - len(row))
-        _, name, time_and_date, where, support_text, link = values[:6]
-        if not name.strip():
-            continue
+    normalized_headers = [_normalize_header(str(cell)) for cell in rows[0]]
+    has_header = any(
+        key in normalized_headers
+        for key in ("name", "event", "мероприятие", "active", "show?", "calendly", "calendlylink")
+    )
 
-        events.append(
-            EventItem(
-                name=name.strip(),
-                time_and_date=time_and_date.strip(),
-                where=where.strip(),
-                support_text=support_text.strip(),
-                link=link.strip(),
+    if has_header:
+        header_map = {normalized: idx for idx, normalized in enumerate(normalized_headers)}
+
+        name_idx = _first_present(header_map, "name", "event", "мероприятие", "название")
+        time_idx = _first_present(header_map, "timeanddate", "datetime", "date", "дата")
+        where_idx = _first_present(header_map, "where", "location", "место")
+        description_idx = _first_present(header_map, "supporttext", "description", "описание")
+        link_idx = _first_present(header_map, "link", "url", "registrationlink", "eventlink")
+        active_idx = _first_present(header_map, "active", "show?", "show")
+        calendly_idx = _first_present(header_map, "calendly", "calendlylink", "meetinglink")
+
+        for row in rows[1:]:
+            if not row:
+                continue
+
+            if active_idx is not None and not _is_active(_extract_by_index(row, active_idx)):
+                continue
+
+            name = _extract_by_index(row, name_idx)
+            if not name:
+                continue
+
+            events.append(
+                EventItem(
+                    name=name,
+                    time_and_date=_extract_by_index(row, time_idx),
+                    where=_extract_by_index(row, where_idx),
+                    support_text=_extract_by_index(row, description_idx),
+                    link=_extract_by_index(row, link_idx),
+                    calendly_link=_extract_by_index(row, calendly_idx),
+                )
             )
-        )
+    else:
+        # Legacy schema fallback: [id, name, time_and_date, where, support_text, link]
+        for row in rows:
+            if not row:
+                continue
+
+            values = list(row) + [""] * max(0, 6 - len(row))
+            _, name, time_and_date, where, support_text, link = values[:6]
+            if not str(name).strip():
+                continue
+
+            events.append(
+                EventItem(
+                    name=str(name).strip(),
+                    time_and_date=str(time_and_date).strip(),
+                    where=str(where).strip(),
+                    support_text=str(support_text).strip(),
+                    link=str(link).strip(),
+                    calendly_link="",
+                )
+            )
 
     return events
 
@@ -100,6 +170,11 @@ def format_events_message(events: list[EventItem]) -> str:
         if event.link:
             safe_link = html.escape(event.link, quote=True)
             lines.append(f"🔗 <a href=\"{safe_link}\">Регистрация / детали</a>")
+        if event.calendly_link:
+            safe_calendly = html.escape(event.calendly_link, quote=True)
+            lines.append(
+                f"🤝 <a href=\"{safe_calendly}\">Запись на личную встречу на этом мероприятии (Calendly)</a>"
+            )
 
     lines.extend(["", "📌 Если хотите, подскажу, на какое событие лучше идти первым."])
     return "\n".join(lines)
