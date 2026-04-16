@@ -543,7 +543,15 @@ async def get_users_for_export():
                     active_clients_count,
                     standardization_level,
                     automation_level,
-                    precise_assessment,
+                    COALESCE(
+                        precise_assessment,
+                        CASE
+                            WHEN express_saving_6 IS NOT NULL AND express_saving_12 IS NOT NULL THEN
+                                LEAST(express_saving_6, express_saving_12)::text || ' – ' ||
+                                GREATEST(express_saving_6, express_saving_12)::text || ' ₽/мес'
+                            ELSE NULL
+                        END
+                    ) AS precise_assessment,
                     margin_percent,
                     growth_band,
                     mna_interest,
