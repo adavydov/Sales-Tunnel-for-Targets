@@ -20,7 +20,7 @@ from app.calendly import (
 )
 from app.config import BOT_TOKEN, MEETING_TIMEZONE
 from app.config import GOOGLE_SHEETS_API_KEY, GOOGLE_SHEETS_RANGE, GOOGLE_SHEETS_SPREADSHEET_ID
-from app.db import add_event, get_tool_consent, save_funnel_fields, save_profile_field, upsert_user
+from app.db import add_event, get_tool_consent, get_user_personal_data, save_funnel_fields, save_profile_field, upsert_user
 from app.events import EventsConfigError, EventsRequestError, fetch_events, format_events_message
 from app.keyboards import (
     meeting_calendar_keyboard,
@@ -31,6 +31,7 @@ from app.keyboards import (
     meeting_waiting_keyboard,
     menu_keyboard,
     persistent_main_keyboard,
+    website_optional_keyboard,
     simulate_deep_assessment_keyboard,
     simulate_deep_wait_keyboard,
     simulate_mode_keyboard,
@@ -71,9 +72,12 @@ ONBOARDING_PROMO_TEXT = (
 )
 
 TOOL_PLACEHOLDER_TEXT = (
-    "Спасибо! Соглашения приняты ✅\n\n"
     "Инструмент пока в режиме заглушки."
     " На следующем шаге здесь будет полноценная интерактивная симуляция."
+)
+CONSENT_ACCEPTED_TEXT = (
+    "Спасибо! Соглашения приняты ✅\n"
+    "Теперь вам доступны все возможности этого бота"
 )
 
 CONSENT_TEXT = (
@@ -144,6 +148,12 @@ WAIT_FILE_TEXT = (
 )
 THANKS_DEEP_TEXT = "Спасибо! С вами свяжутся в течение 2 рабочих дней."
 THANKS_TOOL_TEXT = "Спасибо, что воспользовались нашим инструментом, надеемся он оказался полезным."
+NO_SITE_MARKER = "нет сайта"
+MISSING_PERSONAL_DATA_TEXT = (
+    "Чтобы мы могли дать качественную обратную связь по вашему Excel,\n"
+    "пожалуйста, заполните все персональные данные.\n"
+    "После этого мы свяжемся с вами в течение 2 рабочих дней."
+)
 MEETING_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 DEFAULT_EXPRESS_ACCOUNTANTS = 15
 DEFAULT_EXPRESS_SALARY = 120000
@@ -294,6 +304,19 @@ async def return_to_base_state(message: Message, state: FSMContext, text: str):
     await message.answer(text, reply_markup=persistent_main_keyboard())
 
 
+def is_personal_data_complete(personal_data: dict[str, str]) -> bool:
+    website = personal_data.get("company_website", "").strip().lower()
+    required_filled = all(
+        [
+            personal_data.get("contact_name", "").strip(),
+            personal_data.get("contact_email", "").strip(),
+            personal_data.get("contact_phone", "").strip(),
+            personal_data.get("company", "").strip(),
+        ]
+    )
+    return required_filled and bool(website or website == NO_SITE_MARKER)
+
+
 async def delete_message_safe(message: Message):
     try:
         await message.delete()
@@ -347,7 +370,7 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
     user_id = await get_db_user_id(message_or_callback)
     await add_event(user_id, "tool_open_requested", tool_name)
 
-    already_accepted = await get_tool_consent(user_id, tool_name)
+    already_accepted = await get_tool_consent(user_id, "simulate") or await get_tool_consent(user_id, "valuation")
     if already_accepted:
         if tool_name == "simulate":
             await send_simulate_mode_menu(message_or_callback, state)
@@ -418,7 +441,7 @@ async def open_simulate_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "simulate")
 
 
-@router.message(StateFilter(None), F.text == "Оценка стоимости фирмы")
+@router.message(StateFilter(None), F.text == "Оценка стоимости фирмы (скоро)")
 async def open_valuation_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "valuation")
 
@@ -480,10 +503,12 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Нужно отметить оба пункта перед продолжением.", show_alert=True)
         return
 
-    await save_profile_field(user_id, f"{tool_name}_consent", "accepted")
+    await save_profile_field(user_id, "simulate_consent", "accepted")
+    await save_profile_field(user_id, "valuation_consent", "accepted")
     await add_event(user_id, "tool_consent_accepted", tool_name)
 
     await callback.message.delete()
+    await callback.message.answer(CONSENT_ACCEPTED_TEXT)
     if tool_name == "simulate":
         await send_simulate_mode_menu(callback, state)
         return
@@ -1003,6 +1028,10 @@ async def simulate_precise_clients_skip_text(message: Message, state: FSMContext
 
 @router.callback_query(SimulateFlow.precise_contacts, F.data == "simulate:contacts:skip")
 async def simulate_contacts_skip(callback: CallbackQuery, state: FSMContext):
+    if (await state.get_data()).get("force_full_contacts", False):
+        await callback.answer("В этом сценарии пропуск недоступен.", show_alert=True)
+        return
+
     await delete_message_safe(callback.message)
     await state.update_data(precise_contacts="")
     await state.set_state(SimulateFlow.precise_standardization)
@@ -1014,9 +1043,10 @@ async def simulate_contacts_skip(callback: CallbackQuery, state: FSMContext):
 async def simulate_contacts_share(callback: CallbackQuery, state: FSMContext):
     await delete_message_safe(callback.message)
     await state.set_state(SimulateFlow.precise_contact_name)
+    force_full_contacts = bool((await state.get_data()).get("force_full_contacts", False))
     await callback.message.answer(
         "Введите ваше имя:",
-        reply_markup=simulate_contact_field_keyboard("simulate:contacts:name:skip"),
+        reply_markup=None if force_full_contacts else simulate_contact_field_keyboard("simulate:contacts:name:skip"),
     )
     await callback.answer()
 
@@ -1029,14 +1059,19 @@ async def simulate_contact_name(message: Message, state: FSMContext):
     if user_id:
         await save_funnel_fields(int(user_id), contact_name=name)
     await state.set_state(SimulateFlow.precise_contact_email)
+    force_full_contacts = bool((await state.get_data()).get("force_full_contacts", False))
     await message.answer(
         "Введите ваш Email:",
-        reply_markup=simulate_contact_field_keyboard("simulate:contacts:email:skip"),
+        reply_markup=None if force_full_contacts else simulate_contact_field_keyboard("simulate:contacts:email:skip"),
     )
 
 
 @router.callback_query(SimulateFlow.precise_contact_name, F.data == "simulate:contacts:name:skip")
 async def simulate_contact_name_skip(callback: CallbackQuery, state: FSMContext):
+    if (await state.get_data()).get("force_full_contacts", False):
+        await callback.answer("Этот шаг нельзя пропустить.", show_alert=True)
+        return
+
     await state.update_data(contact_name="")
     user_id = (await state.get_data()).get("db_user_id")
     if user_id:
@@ -1057,14 +1092,19 @@ async def simulate_contact_email(message: Message, state: FSMContext):
     if user_id:
         await save_funnel_fields(int(user_id), contact_email=email)
     await state.set_state(SimulateFlow.precise_contact_phone)
+    force_full_contacts = bool((await state.get_data()).get("force_full_contacts", False))
     await message.answer(
         "Введите ваш телефон:",
-        reply_markup=simulate_contact_field_keyboard("simulate:contacts:phone:skip"),
+        reply_markup=None if force_full_contacts else simulate_contact_field_keyboard("simulate:contacts:phone:skip"),
     )
 
 
 @router.callback_query(SimulateFlow.precise_contact_email, F.data == "simulate:contacts:email:skip")
 async def simulate_contact_email_skip(callback: CallbackQuery, state: FSMContext):
+    if (await state.get_data()).get("force_full_contacts", False):
+        await callback.answer("Этот шаг нельзя пропустить.", show_alert=True)
+        return
+
     await state.update_data(contact_email="")
     user_id = (await state.get_data()).get("db_user_id")
     if user_id:
@@ -1085,14 +1125,19 @@ async def simulate_contact_phone(message: Message, state: FSMContext):
     if user_id:
         await save_funnel_fields(int(user_id), contact_phone=phone)
     await state.set_state(SimulateFlow.precise_contact_company)
+    force_full_contacts = bool((await state.get_data()).get("force_full_contacts", False))
     await message.answer(
         "Введите название вашей компании:",
-        reply_markup=simulate_contact_field_keyboard("simulate:contacts:company:skip"),
+        reply_markup=None if force_full_contacts else simulate_contact_field_keyboard("simulate:contacts:company:skip"),
     )
 
 
 @router.callback_query(SimulateFlow.precise_contact_phone, F.data == "simulate:contacts:phone:skip")
 async def simulate_contact_phone_skip(callback: CallbackQuery, state: FSMContext):
+    if (await state.get_data()).get("force_full_contacts", False):
+        await callback.answer("Этот шаг нельзя пропустить.", show_alert=True)
+        return
+
     await state.update_data(contact_phone="")
     user_id = (await state.get_data()).get("db_user_id")
     if user_id:
@@ -1113,14 +1158,21 @@ async def simulate_contact_company(message: Message, state: FSMContext):
     if user_id:
         await save_profile_field(int(user_id), "company", company)
     await state.set_state(SimulateFlow.precise_contact_website)
+    force_full_contacts = bool((await state.get_data()).get("force_full_contacts", False))
     await message.answer(
         "Введите сайт вашей компании:",
-        reply_markup=simulate_contact_field_keyboard("simulate:contacts:website:skip"),
+        reply_markup=website_optional_keyboard()
+        if force_full_contacts
+        else simulate_contact_field_keyboard("simulate:contacts:website:skip"),
     )
 
 
 @router.callback_query(SimulateFlow.precise_contact_company, F.data == "simulate:contacts:company:skip")
 async def simulate_contact_company_skip(callback: CallbackQuery, state: FSMContext):
+    if (await state.get_data()).get("force_full_contacts", False):
+        await callback.answer("Этот шаг нельзя пропустить.", show_alert=True)
+        return
+
     await state.update_data(contact_company="")
     user_id = (await state.get_data()).get("db_user_id")
     if user_id:
@@ -1153,12 +1205,46 @@ async def simulate_contact_website(message: Message, state: FSMContext):
             f"website={website_raw}"
         ),
     )
+    force_full_contacts = bool((await state.get_data()).get("force_full_contacts", False))
+    if force_full_contacts:
+        await return_to_base_state(message, state, THANKS_DEEP_TEXT)
+        return
+
     await state.set_state(SimulateFlow.precise_standardization)
     await ask_precise_standardization_question(message)
 
 
+@router.callback_query(SimulateFlow.precise_contact_website, F.data == "onboarding:no_site")
+async def simulate_contact_website_no_site(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(contact_website=NO_SITE_MARKER)
+    user_id = (await state.get_data()).get("db_user_id")
+    if user_id:
+        await save_profile_field(int(user_id), "company_website", NO_SITE_MARKER)
+
+    data = await state.get_data()
+    await state.update_data(
+        precise_contacts=(
+            f"name={data.get('contact_name', '')}|email={data.get('contact_email', '')}|"
+            f"phone={data.get('contact_phone', '')}|company={data.get('contact_company', '')}|"
+            f"website={NO_SITE_MARKER}"
+        ),
+    )
+    if (await state.get_data()).get("force_full_contacts", False):
+        await return_to_base_state(callback.message, state, THANKS_DEEP_TEXT)
+        await callback.answer()
+        return
+
+    await state.set_state(SimulateFlow.precise_standardization)
+    await ask_precise_standardization_question(callback.message)
+    await callback.answer()
+
+
 @router.callback_query(SimulateFlow.precise_contact_website, F.data == "simulate:contacts:website:skip")
 async def simulate_contact_website_skip(callback: CallbackQuery, state: FSMContext):
+    if (await state.get_data()).get("force_full_contacts", False):
+        await callback.answer("Для сайта используйте кнопку «Нет сайта».", show_alert=True)
+        return
+
     await state.update_data(contact_website="")
     user_id = (await state.get_data()).get("db_user_id")
     if user_id:
@@ -1360,6 +1446,16 @@ async def simulate_wait_excel_upload(message: Message, state: FSMContext):
         uploaded_file_link=uploaded_file_link,
     )
     await add_event(user_id, "simulate_deep_excel_uploaded", document.file_name)
+
+    personal_data = await get_user_personal_data(user_id)
+    if not is_personal_data_complete(personal_data):
+        await state.clear()
+        await state.update_data(db_user_id=user_id, force_full_contacts=True)
+        await state.set_state(SimulateFlow.precise_contact_name)
+        await message.answer(MISSING_PERSONAL_DATA_TEXT)
+        await message.answer("Введите ваше имя:")
+        return
+
     await return_to_base_state(message, state, THANKS_DEEP_TEXT)
 
 
