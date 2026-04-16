@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import date, datetime, time
 from pathlib import Path
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
@@ -17,7 +18,7 @@ from app.calendly import (
     is_configured as calendly_is_configured,
     is_slot_available,
 )
-from app.config import MEETING_TIMEZONE
+from app.config import BOT_TOKEN, MEETING_TIMEZONE
 from app.config import GOOGLE_SHEETS_API_KEY, GOOGLE_SHEETS_RANGE, GOOGLE_SHEETS_SPREADSHEET_ID
 from app.db import add_event, get_tool_consent, save_funnel_fields, save_profile_field, upsert_user
 from app.events import EventsConfigError, EventsRequestError, fetch_events, format_events_message
@@ -70,9 +71,12 @@ ONBOARDING_PROMO_TEXT = (
 )
 
 TOOL_PLACEHOLDER_TEXT = (
-    "Спасибо! Соглашения приняты ✅\n\n"
     "Инструмент пока в режиме заглушки."
     " На следующем шаге здесь будет полноценная интерактивная симуляция."
+)
+CONSENT_ACCEPTED_TEXT = (
+    "Спасибо! Соглашения приняты ✅\n"
+    "Теперь вам доступны все возможности этого бота"
 )
 
 CONSENT_TEXT = (
@@ -346,7 +350,7 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
     user_id = await get_db_user_id(message_or_callback)
     await add_event(user_id, "tool_open_requested", tool_name)
 
-    already_accepted = await get_tool_consent(user_id, tool_name)
+    already_accepted = await get_tool_consent(user_id, "simulate") or await get_tool_consent(user_id, "valuation")
     if already_accepted:
         if tool_name == "simulate":
             await send_simulate_mode_menu(message_or_callback, state)
@@ -417,7 +421,7 @@ async def open_simulate_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "simulate")
 
 
-@router.message(StateFilter(None), F.text == "Оценка стоимости фирмы")
+@router.message(StateFilter(None), F.text == "Оценка стоимости фирмы (скоро)")
 async def open_valuation_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "valuation")
 
@@ -479,10 +483,12 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Нужно отметить оба пункта перед продолжением.", show_alert=True)
         return
 
-    await save_profile_field(user_id, f"{tool_name}_consent", "accepted")
+    await save_profile_field(user_id, "simulate_consent", "accepted")
+    await save_profile_field(user_id, "valuation_consent", "accepted")
     await add_event(user_id, "tool_consent_accepted", tool_name)
 
     await callback.message.delete()
+    await callback.message.answer(CONSENT_ACCEPTED_TEXT)
     if tool_name == "simulate":
         await send_simulate_mode_menu(callback, state)
         return
@@ -1318,7 +1324,7 @@ async def simulate_deep_download(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:sent_email")
 async def simulate_deep_sent_email(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
-    await save_funnel_fields(user_id, uploaded_file_link="sent_to_success@aivel.ai")
+    await save_funnel_fields(user_id, uploaded_file_link="отправил на почту")
     await add_event(user_id, "simulate_deep_sent_email")
     await return_to_base_state(callback.message, state, THANKS_DEEP_TEXT)
     await callback.answer()
@@ -1344,10 +1350,19 @@ async def simulate_wait_excel_upload(message: Message, state: FSMContext):
         return
 
     user_id = await get_db_user_id(message)
+    uploaded_file_link = f"telegram_file_id:{document.file_id}"
+    try:
+        telegram_file = await message.bot.get_file(document.file_id)
+        if telegram_file.file_path:
+            safe_file_path = quote(telegram_file.file_path, safe="/")
+            uploaded_file_link = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{safe_file_path}"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to build downloadable link for file_id=%s: %s", document.file_id, exc)
+
     await save_funnel_fields(
         user_id,
         file_downloaded=True,
-        uploaded_file_link=f"telegram_file_id:{document.file_id}",
+        uploaded_file_link=uploaded_file_link,
     )
     await add_event(user_id, "simulate_deep_excel_uploaded", document.file_name)
     await return_to_base_state(message, state, THANKS_DEEP_TEXT)

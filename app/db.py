@@ -290,6 +290,21 @@ async def init_db():
                 ON warmup_delivery_logs (user_id, created_at DESC);
             """)
 
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS push_delivery_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    post_id TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, post_id)
+                );
+            """)
+
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_push_delivery_user_post
+                ON push_delivery_logs (user_id, post_id);
+            """)
+
 
         await seed_warmup_messages(conn)
         await conn.commit()
@@ -496,6 +511,108 @@ async def get_all_users():
             """)
             rows = await cur.fetchall()
         return rows
+    finally:
+        await conn.close()
+
+
+async def get_users_for_export():
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                SELECT
+                    id,
+                    telegram_id,
+                    username,
+                    created_at,
+                    updated_at,
+                    company,
+                    contact_name,
+                    contact_phone,
+                    contact_email,
+                    company_website,
+                    simulate_consent,
+                    valuation_consent,
+                    last_connection_at,
+                    accountants_count,
+                    avg_salary,
+                    express_saving_6,
+                    express_saving_12,
+                    meeting_booked,
+                    advisory_band,
+                    active_clients_count,
+                    standardization_level,
+                    automation_level,
+                    COALESCE(
+                        precise_assessment,
+                        CASE
+                            WHEN express_saving_6 IS NOT NULL AND express_saving_12 IS NOT NULL THEN
+                                LEAST(express_saving_6, express_saving_12)::text || ' – ' ||
+                                GREATEST(express_saving_6, express_saving_12)::text || ' ₽/мес'
+                            ELSE NULL
+                        END
+                    ) AS precise_assessment,
+                    margin_percent,
+                    growth_band,
+                    mna_interest,
+                    file_downloaded,
+                    uploaded_file_link
+                FROM users
+                ORDER BY id ASC;
+            """)
+            rows = await cur.fetchall()
+        return rows
+    finally:
+        await conn.close()
+
+
+async def get_all_users_for_push():
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                SELECT id, telegram_id, created_at
+                FROM users
+                ORDER BY id ASC;
+            """)
+            rows = await cur.fetchall()
+        return rows
+    finally:
+        await conn.close()
+
+
+async def was_push_sent(user_id: int, post_id: str) -> bool:
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT 1
+                FROM push_delivery_logs
+                WHERE user_id = %s AND post_id = %s
+                LIMIT 1;
+                """,
+                (user_id, post_id),
+            )
+            row = await cur.fetchone()
+        return row is not None
+    finally:
+        await conn.close()
+
+
+async def log_push_delivery(user_id: int, post_id: str):
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO push_delivery_logs (user_id, post_id)
+                VALUES (%s, %s)
+                ON CONFLICT (user_id, post_id) DO NOTHING;
+                """,
+                (user_id, post_id),
+            )
+        await conn.commit()
     finally:
         await conn.close()
 
