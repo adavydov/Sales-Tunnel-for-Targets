@@ -22,7 +22,7 @@ from app.config import (
 from app.db import add_event, get_all_users_for_push, log_push_delivery, was_push_sent
 
 logger = logging.getLogger(__name__)
-WELCOME_POST_DELAY_MINUTES = 60  # send POST-001 one hour after registration
+WELCOME_POST_DELAY_MINUTES = 1  # send POST-001 one minute after registration
 WELCOME_POST_CHECK_INTERVAL_MINUTES = 1
 TIMEZONE_ALIASES = {
     "moscow": "Europe/Moscow",
