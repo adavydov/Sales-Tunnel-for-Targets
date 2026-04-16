@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -212,7 +213,7 @@ async def send_scheduled_post(bot: Bot, post: PushPost):
 
 
 async def send_welcome_post(bot: Bot):
-    posts = fetch_push_posts()
+    posts = await asyncio.to_thread(fetch_push_posts)
     welcome = next((post for post in posts if post.post_id.upper() == "POST-001"), None)
     if not welcome:
         return
@@ -231,7 +232,7 @@ async def send_welcome_post(bot: Bot):
 
 
 async def refresh_week_schedule(bot: Bot, scheduler: AsyncIOScheduler):
-    posts = fetch_push_posts()
+    posts = await asyncio.to_thread(fetch_push_posts)
     now = datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE))
     week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     week_end = week_start + timedelta(days=7)
@@ -279,6 +280,14 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         minutes=10,
         kwargs={"bot": bot},
         id="push_welcome_post_interval",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        send_welcome_post,
+        trigger="date",
+        run_date=datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE)) + timedelta(seconds=10),
+        kwargs={"bot": bot},
+        id="push_welcome_post_startup",
         replace_existing=True,
     )
     scheduler.add_job(
