@@ -26,7 +26,7 @@ def persistent_main_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="Меню бота")],
             [KeyboardButton(text="Калькулятор экономии")],
-            [KeyboardButton(text="Оценка стоимости фирмы")],
+            [KeyboardButton(text="Оценка стоимости фирмы (скоро)")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -39,7 +39,7 @@ def menu_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
             [InlineKeyboardButton(text="🎤 Встретиться на мероприятиях", callback_data="stub:events")],
-            [InlineKeyboardButton(text="🧩 Продукты и услуги", callback_data="stub:products")],
+            [InlineKeyboardButton(text="🧩 Продукты и услуги (скоро)", callback_data="stub:products")],
             [InlineKeyboardButton(text="🎬 Видео и кейсы (скоро)", callback_data="stub:videos")],
         ]
     )
