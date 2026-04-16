@@ -216,17 +216,19 @@ async def send_welcome_post(bot: Bot):
     posts = await asyncio.to_thread(fetch_push_posts)
     welcome = next((post for post in posts if post.post_id.upper() == "POST-001"), None)
     if not welcome:
+        logger.info("Welcome post POST-001 not found in push content.")
         return
 
     users = await get_all_users_for_push()
     now = datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE))
+    scheduler_tz = ZoneInfo(CONTENT_SCHEDULER_TIMEZONE)
     for user in users:
         created_at = user.get("created_at")
         if not created_at:
             continue
         if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=ZoneInfo("UTC"))
-        created_local = created_at.astimezone(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE))
+            created_at = created_at.replace(tzinfo=scheduler_tz)
+        created_local = created_at.astimezone(scheduler_tz)
         if now >= created_local + timedelta(minutes=WELCOME_POST_DELAY_MINUTES):
             await _send_post_to_user(bot, user, welcome)
 
