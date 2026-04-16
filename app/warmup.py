@@ -23,6 +23,7 @@ from app.db import add_event, get_all_users_for_push, log_push_delivery, was_pus
 
 logger = logging.getLogger(__name__)
 WELCOME_POST_DELAY_MINUTES = 1  # test mode: send POST-001 shortly after registration
+WELCOME_POST_CHECK_INTERVAL_MINUTES = 1
 
 
 @dataclass
@@ -216,19 +217,31 @@ async def send_welcome_post(bot: Bot):
     posts = await asyncio.to_thread(fetch_push_posts)
     welcome = next((post for post in posts if post.post_id.upper() == "POST-001"), None)
     if not welcome:
+        logger.info("Welcome post POST-001 not found in push content.")
         return
 
     users = await get_all_users_for_push()
     now = datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE))
+    scheduler_tz = ZoneInfo(CONTENT_SCHEDULER_TIMEZONE)
+    checked_users = 0
+    eligible_users = 0
     for user in users:
         created_at = user.get("created_at")
         if not created_at:
             continue
+        checked_users += 1
         if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=ZoneInfo("UTC"))
-        created_local = created_at.astimezone(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE))
+            created_at = created_at.replace(tzinfo=scheduler_tz)
+        created_local = created_at.astimezone(scheduler_tz)
         if now >= created_local + timedelta(minutes=WELCOME_POST_DELAY_MINUTES):
+            eligible_users += 1
             await _send_post_to_user(bot, user, welcome)
+    logger.info(
+        "Welcome scan completed. Checked users: %s, eligible users: %s, delay_min: %s",
+        checked_users,
+        eligible_users,
+        WELCOME_POST_DELAY_MINUTES,
+    )
 
 
 async def refresh_week_schedule(bot: Bot, scheduler: AsyncIOScheduler):
@@ -277,7 +290,7 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(
         send_welcome_post,
         trigger="interval",
-        minutes=10,
+        minutes=WELCOME_POST_CHECK_INTERVAL_MINUTES,
         kwargs={"bot": bot},
         id="push_welcome_post_interval",
         replace_existing=True,
