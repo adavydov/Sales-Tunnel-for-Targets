@@ -71,9 +71,12 @@ ONBOARDING_PROMO_TEXT = (
 )
 
 TOOL_PLACEHOLDER_TEXT = (
-    "Спасибо! Соглашения приняты ✅\n\n"
     "Инструмент пока в режиме заглушки."
     " На следующем шаге здесь будет полноценная интерактивная симуляция."
+)
+CONSENT_ACCEPTED_TEXT = (
+    "Спасибо! Соглашения приняты ✅\n"
+    "Теперь вам доступны все возможности этого бота"
 )
 
 CONSENT_TEXT = (
@@ -347,7 +350,7 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
     user_id = await get_db_user_id(message_or_callback)
     await add_event(user_id, "tool_open_requested", tool_name)
 
-    already_accepted = await get_tool_consent(user_id, tool_name)
+    already_accepted = await get_tool_consent(user_id, "simulate") or await get_tool_consent(user_id, "valuation")
     if already_accepted:
         if tool_name == "simulate":
             await send_simulate_mode_menu(message_or_callback, state)
@@ -418,7 +421,7 @@ async def open_simulate_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "simulate")
 
 
-@router.message(StateFilter(None), F.text == "Оценка стоимости фирмы")
+@router.message(StateFilter(None), F.text == "Оценка стоимости фирмы (скоро)")
 async def open_valuation_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "valuation")
 
@@ -480,10 +483,12 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Нужно отметить оба пункта перед продолжением.", show_alert=True)
         return
 
-    await save_profile_field(user_id, f"{tool_name}_consent", "accepted")
+    await save_profile_field(user_id, "simulate_consent", "accepted")
+    await save_profile_field(user_id, "valuation_consent", "accepted")
     await add_event(user_id, "tool_consent_accepted", tool_name)
 
     await callback.message.delete()
+    await callback.message.answer(CONSENT_ACCEPTED_TEXT)
     if tool_name == "simulate":
         await send_simulate_mode_menu(callback, state)
         return
