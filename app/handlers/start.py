@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import date, datetime, time
 from pathlib import Path
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
@@ -17,7 +18,7 @@ from app.calendly import (
     is_configured as calendly_is_configured,
     is_slot_available,
 )
-from app.config import MEETING_TIMEZONE
+from app.config import BOT_TOKEN, MEETING_TIMEZONE
 from app.config import GOOGLE_SHEETS_API_KEY, GOOGLE_SHEETS_RANGE, GOOGLE_SHEETS_SPREADSHEET_ID
 from app.db import add_event, get_tool_consent, save_funnel_fields, save_profile_field, upsert_user
 from app.events import EventsConfigError, EventsRequestError, fetch_events, format_events_message
@@ -1318,7 +1319,7 @@ async def simulate_deep_download(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(SimulateFlow.precise_wait_excel, F.data == "simulate:deep:sent_email")
 async def simulate_deep_sent_email(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
-    await save_funnel_fields(user_id, uploaded_file_link="sent_to_success@aivel.ai")
+    await save_funnel_fields(user_id, uploaded_file_link="отправил на почту")
     await add_event(user_id, "simulate_deep_sent_email")
     await return_to_base_state(callback.message, state, THANKS_DEEP_TEXT)
     await callback.answer()
@@ -1344,10 +1345,19 @@ async def simulate_wait_excel_upload(message: Message, state: FSMContext):
         return
 
     user_id = await get_db_user_id(message)
+    uploaded_file_link = f"telegram_file_id:{document.file_id}"
+    try:
+        telegram_file = await message.bot.get_file(document.file_id)
+        if telegram_file.file_path:
+            safe_file_path = quote(telegram_file.file_path, safe="/")
+            uploaded_file_link = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{safe_file_path}"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to build downloadable link for file_id=%s: %s", document.file_id, exc)
+
     await save_funnel_fields(
         user_id,
         file_downloaded=True,
-        uploaded_file_link=f"telegram_file_id:{document.file_id}",
+        uploaded_file_link=uploaded_file_link,
     )
     await add_event(user_id, "simulate_deep_excel_uploaded", document.file_name)
     await return_to_base_state(message, state, THANKS_DEEP_TEXT)

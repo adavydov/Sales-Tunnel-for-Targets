@@ -515,6 +515,57 @@ async def get_all_users():
         await conn.close()
 
 
+async def get_users_for_export():
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                SELECT
+                    id,
+                    telegram_id,
+                    username,
+                    created_at,
+                    updated_at,
+                    company,
+                    contact_name,
+                    contact_phone,
+                    contact_email,
+                    company_website,
+                    simulate_consent,
+                    valuation_consent,
+                    last_connection_at,
+                    accountants_count,
+                    avg_salary,
+                    express_saving_6,
+                    express_saving_12,
+                    meeting_booked,
+                    advisory_band,
+                    active_clients_count,
+                    standardization_level,
+                    automation_level,
+                    COALESCE(
+                        precise_assessment,
+                        CASE
+                            WHEN express_saving_6 IS NOT NULL AND express_saving_12 IS NOT NULL THEN
+                                LEAST(express_saving_6, express_saving_12)::text || ' – ' ||
+                                GREATEST(express_saving_6, express_saving_12)::text || ' ₽/мес'
+                            ELSE NULL
+                        END
+                    ) AS precise_assessment,
+                    margin_percent,
+                    growth_band,
+                    mna_interest,
+                    file_downloaded,
+                    uploaded_file_link
+                FROM users
+                ORDER BY id ASC;
+            """)
+            rows = await cur.fetchall()
+        return rows
+    finally:
+        await conn.close()
+
+
 async def get_all_users_for_push():
     conn = await get_connection()
     try:
