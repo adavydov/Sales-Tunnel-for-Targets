@@ -48,7 +48,7 @@ def menu_keyboard() -> InlineKeyboardMarkup:
 def website_optional_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Нет сайта", callback_data="onboarding:no_site")],
+            [InlineKeyboardButton(text="Нету сайта", callback_data="onboarding:no_site")],
         ]
     )
 

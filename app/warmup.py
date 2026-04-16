@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from urllib.parse import quote
 from urllib.request import urlopen
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -22,8 +22,15 @@ from app.config import (
 from app.db import add_event, get_all_users_for_push, log_push_delivery, was_push_sent
 
 logger = logging.getLogger(__name__)
-WELCOME_POST_DELAY_MINUTES = 60  # send POST-001 one hour after registration
+WELCOME_POST_DELAY_MINUTES = 1  # send POST-001 one minute after registration
 WELCOME_POST_CHECK_INTERVAL_MINUTES = 1
+TIMEZONE_ALIASES = {
+    "moscow": "Europe/Moscow",
+    "msk": "Europe/Moscow",
+    "europe/moscow": "Europe/Moscow",
+    "utc+3": "Europe/Moscow",
+    "gmt+3": "Europe/Moscow",
+}
 
 
 @dataclass
@@ -77,13 +84,41 @@ def _parse_send_at(date_raw: str, time_raw: str, tz_name: str) -> datetime | Non
         return None
 
     dt_value = f"{date_raw.strip()} {time_raw.strip()}".strip()
+    resolved_tz = _resolve_timezone(tz_name)
     for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
         try:
             parsed = datetime.strptime(dt_value, fmt)
-            return parsed.replace(tzinfo=ZoneInfo(tz_name))
+            return parsed.replace(tzinfo=resolved_tz)
         except ValueError:
             continue
     return None
+
+
+def _resolve_timezone(tz_name: str | None) -> ZoneInfo:
+    raw = (tz_name or "").strip()
+    normalized_key = raw.casefold().replace(" ", "")
+    alias = TIMEZONE_ALIASES.get(normalized_key, raw)
+
+    candidates = [
+        alias,
+        raw,
+        CONTENT_SCHEDULER_TIMEZONE,
+        "Europe/Moscow",
+        "UTC",
+    ]
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            return ZoneInfo(candidate)
+        except ZoneInfoNotFoundError:
+            continue
+
+    logger.warning("No valid timezone found for '%s'. Falling back to UTC.", tz_name)
+    return ZoneInfo("UTC")
 
 
 def _build_text(post: PushPost) -> str:
@@ -221,8 +256,8 @@ async def send_welcome_post(bot: Bot):
         return
 
     users = await get_all_users_for_push()
-    now = datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE))
-    scheduler_tz = ZoneInfo(CONTENT_SCHEDULER_TIMEZONE)
+    scheduler_tz = _resolve_timezone(CONTENT_SCHEDULER_TIMEZONE)
+    now = datetime.now(scheduler_tz)
     checked_users = 0
     eligible_users = 0
     for user in users:
@@ -246,7 +281,8 @@ async def send_welcome_post(bot: Bot):
 
 async def refresh_week_schedule(bot: Bot, scheduler: AsyncIOScheduler):
     posts = await asyncio.to_thread(fetch_push_posts)
-    now = datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE))
+    scheduler_tz = _resolve_timezone(CONTENT_SCHEDULER_TIMEZONE)
+    now = datetime.now(scheduler_tz)
     week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     week_end = week_start + timedelta(days=7)
 
@@ -259,7 +295,7 @@ async def refresh_week_schedule(bot: Bot, scheduler: AsyncIOScheduler):
             continue
         if not post.send_at:
             continue
-        send_at = post.send_at.astimezone(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE))
+        send_at = post.send_at.astimezone(scheduler_tz)
         if send_at < now or send_at < week_start or send_at >= week_end:
             continue
 
@@ -276,7 +312,8 @@ async def refresh_week_schedule(bot: Bot, scheduler: AsyncIOScheduler):
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
-    scheduler = AsyncIOScheduler(timezone=ZoneInfo(CONTENT_SCHEDULER_TIMEZONE))
+    scheduler_tz = _resolve_timezone(CONTENT_SCHEDULER_TIMEZONE)
+    scheduler = AsyncIOScheduler(timezone=scheduler_tz)
 
     scheduler.add_job(
         refresh_week_schedule,
@@ -298,7 +335,7 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(
         send_welcome_post,
         trigger="date",
-        run_date=datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE)) + timedelta(seconds=10),
+        run_date=datetime.now(scheduler_tz) + timedelta(seconds=10),
         kwargs={"bot": bot},
         id="push_welcome_post_startup",
         replace_existing=True,
@@ -306,7 +343,7 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(
         refresh_week_schedule,
         trigger="date",
-        run_date=datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE)) + timedelta(seconds=10),
+        run_date=datetime.now(scheduler_tz) + timedelta(seconds=10),
         kwargs={"bot": bot, "scheduler": scheduler},
         id="push_refresh_startup",
         replace_existing=True,
