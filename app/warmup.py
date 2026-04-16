@@ -283,6 +283,14 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         replace_existing=True,
     )
     scheduler.add_job(
+        send_welcome_post,
+        trigger="date",
+        run_date=datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE)) + timedelta(seconds=10),
+        kwargs={"bot": bot},
+        id="push_welcome_post_startup",
+        replace_existing=True,
+    )
+    scheduler.add_job(
         refresh_week_schedule,
         trigger="date",
         run_date=datetime.now(ZoneInfo(CONTENT_SCHEDULER_TIMEZONE)) + timedelta(seconds=10),
