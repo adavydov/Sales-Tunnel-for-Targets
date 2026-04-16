@@ -699,3 +699,37 @@ async def get_tool_consent(user_id: int, tool_name: str) -> bool:
         return row[column_name] == "accepted"
     finally:
         await conn.close()
+
+
+async def get_user_personal_data(user_id: int) -> dict[str, str]:
+    conn = await get_connection()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT contact_name, contact_email, contact_phone, company, company_website
+                FROM users
+                WHERE id = %s;
+                """,
+                (user_id,),
+            )
+            row = await cur.fetchone()
+
+        if not row:
+            return {
+                "contact_name": "",
+                "contact_email": "",
+                "contact_phone": "",
+                "company": "",
+                "company_website": "",
+            }
+
+        return {
+            "contact_name": (row.get("contact_name") or "").strip(),
+            "contact_email": (row.get("contact_email") or "").strip(),
+            "contact_phone": (row.get("contact_phone") or "").strip(),
+            "company": (row.get("company") or "").strip(),
+            "company_website": (row.get("company_website") or "").strip(),
+        }
+    finally:
+        await conn.close()
