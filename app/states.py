@@ -30,3 +30,11 @@ class MeetingBookingFlow(StatesGroup):
     waiting_email = State()
     waiting_date = State()
     waiting_custom_time = State()
+
+
+class ValuationFlow(StatesGroup):
+    mode_select = State()
+    express_revenue = State()
+    express_share = State()
+    express_profitability = State()
+    express_continue = State()
