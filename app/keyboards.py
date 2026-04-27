@@ -388,6 +388,66 @@ def valuation_continue_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def valuation_q6_share_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Менее 20%", callback_data="valuation:q6:lt20")],
+            [InlineKeyboardButton(text="20–40%", callback_data="valuation:q6:20_40")],
+            [InlineKeyboardButton(text="40–60%", callback_data="valuation:q6:40_60")],
+            [InlineKeyboardButton(text="60–80%", callback_data="valuation:q6:60_80")],
+            [InlineKeyboardButton(text="Более 80%", callback_data="valuation:q6:gt80")],
+        ]
+    )
+
+
+def valuation_q8_automation_level_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Нет — работаем в 1С и Excel", callback_data="valuation:q8:none")],
+            [InlineKeyboardButton(text="Частично — макросы, автовыгрузки, таск-менеджер", callback_data="valuation:q8:partial")],
+            [InlineKeyboardButton(text="Да — RPA, боты или AI-решения", callback_data="valuation:q8:advanced")],
+        ]
+    )
+
+
+def valuation_automation_tools_keyboard(selected: set[str]) -> InlineKeyboardMarkup:
+    options = [
+        ("rpa", "RPA (UiPath, PIX, Robin и т.д.)"),
+        ("bots", "Боты для 1С / Telegram"),
+        ("ocr", "OCR / распознавание документов"),
+        ("ai", "AI-решения (GPT, Copilot и др.)"),
+        ("bi", "BI-система (Power BI, Metabase и др.)"),
+    ]
+
+    rows = []
+    for key, label in options:
+        icon = "✅" if key in selected else "⬜"
+        rows.append([InlineKeyboardButton(text=f"{icon} {label}", callback_data=f"valuation:auto:toggle:{key}")])
+
+    rows.append([InlineKeyboardButton(text="✍️ Другое (напишите в чат)", callback_data="valuation:auto:other:hint")])
+    rows.append([InlineKeyboardButton(text="✅ Готово", callback_data="valuation:auto:done")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def valuation_post_result_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📥 Скачать Excel-файл", callback_data="valuation:excel:download")],
+            [InlineKeyboardButton(text="📤 Отправил на почту", callback_data="valuation:excel:sent_email")],
+            [InlineKeyboardButton(text="↩️ В меню", callback_data="valuation:post:menu")],
+        ]
+    )
+
+
+def valuation_idle_followup_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Модели", callback_data="valuation:idle:models")],
+            [InlineKeyboardButton(text="Вопросы", callback_data="valuation:idle:faq")],
+        ]
+    )
+
+
 def calendly_meeting_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
