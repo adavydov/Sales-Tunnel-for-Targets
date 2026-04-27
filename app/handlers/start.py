@@ -905,8 +905,9 @@ async def valuation_mode_about(callback: CallbackQuery):
 async def valuation_express_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ValuationFlow.express_revenue)
     await callback.message.answer(
-        "Q1: Какая годовая выручка вашей фирмы? (млн руб.)\n"
-        "Просто напишите число, например: 30"
+        "<b>Q1: Какая годовая выручка вашей фирмы? (млн руб.)</b>\n\n"
+        "Просто напишите число, например: 30",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -929,8 +930,9 @@ async def valuation_express_revenue(message: Message, state: FSMContext):
     await state.update_data(valuation_revenue_mln=revenue)
     await state.set_state(ValuationFlow.express_share)
     await message.answer(
-        "Q2: Какая доля выручки приходится на базовый бухгалтерский аутсорсинг? (%)\n"
+        "<b>Q2: Какая доля выручки приходится на базовый бухгалтерский аутсорсинг? (%)</b>\n\n"
         "Это обработка первичных документов, сверки и банк-клиент. Без учёта аудита, консалтинга и прочих услуг.",
+        parse_mode="HTML",
         reply_markup=valuation_share_keyboard(),
     )
 
@@ -962,8 +964,9 @@ async def valuation_express_share(callback: CallbackQuery, state: FSMContext):
     await state.update_data(valuation_share_percent=share)
     await state.set_state(ValuationFlow.express_profitability)
     await callback.message.answer(
-        "Q3: Какая коммерческая маржа (прибыльность) на базовых бухгалтерских услугах (P)?\n"
+        "<b>Q3: Какая коммерческая маржа (прибыльность) на базовых бухгалтерских услугах (P)?</b>\n\n"
         "Это прибыль от базовой бухгалтерии ÷ выручка от базовой бухгалтерии.",
+        parse_mode="HTML",
         reply_markup=valuation_profitability_keyboard(),
     )
     await callback.answer()
