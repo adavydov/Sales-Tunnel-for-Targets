@@ -1500,23 +1500,19 @@ async def valuation_idle_models(callback: CallbackQuery, state: FSMContext):
     valuation_mln = round(profit_mln * VALUATION_MULTIPLE, 1)
     investor_25_mln = round(valuation_mln * 0.25, 1)
 
-    await callback.message.answer(
-        "Модели\n"
-        "Мы предлагаем 4 сценария — от «ничего не делать» до «построить группу компаний». "
-        "Каждый влияет на вашу прибыль по-разному."
+    await callback.message.answer_photo(
+        photo=VALUATION_MODELS_IMAGE_URL,
+        caption=(
+            "Модели\n"
+            "Мы предлагаем 4 сценария — от «ничего не делать» до «построить группу компаний». "
+            "Каждый влияет на вашу прибыль по-разному.\n\n"
+            f"Иллюстрация сценариев: {VALUATION_MODELS_IMAGE_URL}\n\n"
+            f"Сценарий компании с прибылью {format_mln(profit_mln)} млн ₽\n"
+            f"Оценка компании: {format_mln(profit_mln)} × {VALUATION_MULTIPLE:.1f} = {format_mln(valuation_mln)} млн ₽\n"
+            f"Стоимость 25% для инвестора: {format_mln(investor_25_mln)} млн ₽"
+        ),
     )
-    await callback.message.answer(
-        f"Иллюстрация сценариев: {VALUATION_MODELS_IMAGE_URL}",
-        disable_web_page_preview=False,
-    )
-    await callback.message.answer(
-        f"Сценарий компании с прибылью {format_mln(profit_mln)} млн ₽\n"
-        f"Оценка компании: {format_mln(profit_mln)} × {VALUATION_MULTIPLE:.1f} = {format_mln(valuation_mln)} млн ₽\n"
-        f"Стоимость 25% для инвестора: {format_mln(investor_25_mln)} млн ₽",
-    )
-    await send_valuation_faq_topics(callback.message)
     await callback.answer()
-
 
 @router.callback_query(ValuationFlow.precise_post_result, F.data == "valuation:idle:faq")
 async def valuation_idle_faq(callback: CallbackQuery):
