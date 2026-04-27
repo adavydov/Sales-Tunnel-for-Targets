@@ -58,6 +58,13 @@ from app.keyboards import (
     valuation_automation_tools_keyboard,
     valuation_excel_offer_keyboard,
     valuation_idle_followup_keyboard,
+    valuation_faq_topics_keyboard,
+    valuation_faq_price_keyboard,
+    valuation_faq_roles_keyboard,
+    valuation_faq_process_keyboard,
+    valuation_faq_ai_keyboard,
+    valuation_faq_changes_keyboard,
+    valuation_faq_legal_keyboard,
 )
 from app.scoring import (
     calculate_express_operation_savings,
@@ -203,6 +210,8 @@ VALUATION_EXCEL_TEXT = (
     "давайте заполним наш подробный Excel-инструмент для оценки сделки.\n"
     "Загрузите Excel — получите полный бизнес-кейс от нашей команды."
 )
+VALUATION_MODELS_IMAGE_URL = "https://disk.yandex.com/i/SXmB484oG0gfzg"
+VALUATION_ROLES_IMAGE_URL = "https://disk.yandex.com/i/bxE4nm-98rX3aA"
 
 
 
@@ -296,6 +305,94 @@ async def schedule_valuation_idle_followup(message: Message, state: FSMContext, 
             return
 
     VALUATION_IDLE_TASKS[user_id] = asyncio.create_task(_idle_ping())
+
+
+async def send_valuation_faq_topics(message: Message):
+    await message.answer(
+        "Всё о сделке — частые вопросы ❓\n\n"
+        "Выберите тему:",
+        reply_markup=valuation_faq_topics_keyboard(),
+    )
+
+
+def valuation_faq_answers() -> dict[str, str]:
+    return {
+        "price_calc": (
+            "Формула простая:\n"
+            "<b>Чистая прибыль × 2.5 = стоимость фирмы</b>\n"
+            "Например: прибыль 5.3 млн ₽ → оценка 13.3 млн ₽.\n\n"
+            "Мультипликатор 2.5× — это стандарт для бухгалтерских фирм с устойчивой клиентской базой.\n"
+            "Он может корректироваться в зависимости от клиентов, доли постоянных договоров и долговой нагрузки."
+        ),
+        "price_debt": (
+            "Долги вычитаются из оценки.\n"
+            "Пример: прибыль 8 млн × 2.5 = 20 млн ₽, долг 2 млн ₽.\n"
+            "<b>Чистая стоимость: 18 млн ₽.</b>"
+        ),
+        "price_25": (
+            "Зависит от формата сделки:\n\n"
+            "💵 <b>Cash-Out</b> — деньги вам на руки: 25% от оценки.\n"
+            "🏗️ <b>Cash-In</b> — деньги идут в компанию на рост.\n"
+            "🔄 <b>Микс</b> — часть вам, часть в компанию."
+        ),
+        "price_cash": (
+            "<b>Cash-In</b> обычно выгоднее через 2–3 года, если цель — рост.\n"
+            "<b>Cash-Out</b> — для тех, кому важна ликвидность сейчас."
+        ),
+        "roles_mgmt": (
+            "Что изменится в управлении:\n"
+            "• Операционка и клиенты остаются за управляющим партнёром.\n"
+            "• AIVEL берёт на себя ИИ/IT-платформу и со-лидит M&A и маркетинг.\n"
+            "• Ключевые решения фиксируются в соглашении."
+        ),
+        "roles_fire": (
+            "Нет. Вы — совладелец и управляющий партнёр.\n"
+            "Ваш статус закреплён в акционерном соглашении, изменения возможны только по процедуре, "
+            "согласованной обеими сторонами."
+        ),
+        "process_steps": (
+            "Процесс обычно занимает 4–8 недель:\n"
+            "1️⃣ Знакомство\n2️⃣ Анкета и оценка\n3️⃣ Персональная модель\n"
+            "4️⃣ Переговоры по структуре\n5️⃣ Due diligence\n6️⃣ Подписание и запуск внедрения."
+        ),
+        "process_fast": (
+            "Да, можно быстрее — до 3–4 недель, если документы готовы и формат сделки определён заранее."
+        ),
+        "ai_speed": (
+            "Внедрение идёт в 3 этапа:\n"
+            "⚙️ Месяцы 1–3: подключение и настройка\n"
+            "🚀 Месяцы 4–6: первые результаты\n"
+            "🏆 Месяцы 7–18: максимальная автоматизация."
+        ),
+        "ai_cost": (
+            "Зависит от формата:\n"
+            "• Без сделки (только ИИ): 2–3 млн ₽ за внедрение.\n"
+            "• В партнёрстве: обычно внедрение идёт за счёт инвестиций в компанию."
+        ),
+        "ai_scope": (
+            "Сейчас автоматизируем: первичку, банковские выписки, акты сверки, тикетинг и отчётность.\n"
+            "Система развивается ежемесячно — новые модули и интеграции добавляются автоматически."
+        ),
+        "changes_clients": (
+            "Для клиентов и контрагентов становится быстрее и удобнее:\n"
+            "✅ Быстрее обработка документов\n✅ Меньше ошибок\n✅ Омниканальный приём обращений (мессенджеры/портал/email).\n\n"
+            "При этом бренд не меняется, договоры не переоформляются."
+        ),
+        "changes_team": (
+            "Команда остаётся с вами. Вы управляете наймом и увольнением.\n"
+            "Что меняется: меньше рутины, больше сложных задач и консалтинга, возможна оптимизация нагрузки."
+        ),
+        "legal_structure": (
+            "Основные документы:\n"
+            "📜 Акционерное соглашение\n📋 Корпоративный договор\n\n"
+            "Что защищает вас: право вето на ключевые решения, прозрачная дивидендная политика, "
+            "право первого отказа при продаже доли."
+        ),
+        "legal_exit": (
+            "Механизм выхода фиксируется заранее в соглашении.\n"
+            "Обычно доступны: обратный выкуп, продажа третьему лицу с ROFR у AIVEL, совместный выход на пике стоимости."
+        ),
+    }
 
 
 def format_mln_range(min_savings_rub: int, max_savings_rub: int) -> str:
@@ -1395,10 +1492,29 @@ async def valuation_post_back_to_menu(callback: CallbackQuery, state: FSMContext
 
 
 @router.callback_query(ValuationFlow.precise_post_result, F.data == "valuation:idle:models")
-async def valuation_idle_models(callback: CallbackQuery):
+async def valuation_idle_models(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
     cancel_valuation_idle_task(user_id)
-    await callback.message.answer("Раздел «Модели» будет добавлен в 3-й части ТЗ.")
+    data = await state.get_data()
+    profit_mln = float(data.get("valuation_profit_mln", 8.0))
+    valuation_mln = round(profit_mln * VALUATION_MULTIPLE, 1)
+    investor_25_mln = round(valuation_mln * 0.25, 1)
+
+    await callback.message.answer(
+        "Модели\n"
+        "Мы предлагаем 4 сценария — от «ничего не делать» до «построить группу компаний». "
+        "Каждый влияет на вашу прибыль по-разному."
+    )
+    await callback.message.answer(
+        f"Иллюстрация сценариев: {VALUATION_MODELS_IMAGE_URL}",
+        disable_web_page_preview=False,
+    )
+    await callback.message.answer(
+        f"Сценарий компании с прибылью {format_mln(profit_mln)} млн ₽\n"
+        f"Оценка компании: {format_mln(profit_mln)} × {VALUATION_MULTIPLE:.1f} = {format_mln(valuation_mln)} млн ₽\n"
+        f"Стоимость 25% для инвестора: {format_mln(investor_25_mln)} млн ₽",
+    )
+    await send_valuation_faq_topics(callback.message)
     await callback.answer()
 
 
@@ -1406,7 +1522,57 @@ async def valuation_idle_models(callback: CallbackQuery):
 async def valuation_idle_faq(callback: CallbackQuery):
     user_id = await get_db_user_id(callback)
     cancel_valuation_idle_task(user_id)
-    await callback.message.answer("Раздел «Вопросы» будет добавлен в 3-й части ТЗ.")
+    await send_valuation_faq_topics(callback.message)
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.precise_post_result, F.data == "valuation:faq:topics")
+async def valuation_faq_topics(callback: CallbackQuery):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await send_valuation_faq_topics(callback.message)
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.precise_post_result, F.data.startswith("valuation:faq:topic:"))
+async def valuation_faq_topic_selected(callback: CallbackQuery):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    topic = callback.data.removeprefix("valuation:faq:topic:")
+    mapping = {
+        "price": ("Оценка и цена", valuation_faq_price_keyboard()),
+        "roles": ("Кто за что отвечает", valuation_faq_roles_keyboard()),
+        "process": ("Как проходит сделка", valuation_faq_process_keyboard()),
+        "ai": ("Внедрение ИИ", valuation_faq_ai_keyboard()),
+        "changes": ("Что меняется в фирме", valuation_faq_changes_keyboard()),
+        "legal": ("Юридические вопросы", valuation_faq_legal_keyboard()),
+    }
+    selected = mapping.get(topic)
+    if selected is None:
+        await callback.answer("Неизвестная тема", show_alert=True)
+        return
+
+    title, keyboard = selected
+    await callback.message.answer(f"Раздел: <b>{title}</b>\n\nВыберите вопрос:", parse_mode="HTML", reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.precise_post_result, F.data.startswith("valuation:faq:q:"))
+async def valuation_faq_question_selected(callback: CallbackQuery):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    question_id = callback.data.removeprefix("valuation:faq:q:")
+    answers = valuation_faq_answers()
+    text = answers.get(question_id)
+    if text is None:
+        await callback.answer("Ответ пока не найден", show_alert=True)
+        return
+
+    if question_id == "roles_mgmt":
+        await callback.message.answer(f"Матрица ролей: {VALUATION_ROLES_IMAGE_URL}", disable_web_page_preview=False)
+
+    await callback.message.answer(text, parse_mode="HTML")
+    await callback.message.answer("Вы можете выбрать другой вопрос или вернуться к темам.", reply_markup=valuation_faq_topics_keyboard())
     await callback.answer()
 
 

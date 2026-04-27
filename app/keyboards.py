@@ -447,6 +447,83 @@ def valuation_idle_followup_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def valuation_faq_topics_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Оценка и цена", callback_data="valuation:faq:topic:price")],
+            [InlineKeyboardButton(text="Кто за что отвечает", callback_data="valuation:faq:topic:roles")],
+            [InlineKeyboardButton(text="Как проходит сделка", callback_data="valuation:faq:topic:process")],
+            [InlineKeyboardButton(text="Внедрение ИИ", callback_data="valuation:faq:topic:ai")],
+            [InlineKeyboardButton(text="Что меняется в фирме", callback_data="valuation:faq:topic:changes")],
+            [InlineKeyboardButton(text="Юридические вопросы", callback_data="valuation:faq:topic:legal")],
+            [InlineKeyboardButton(text="↩️ В меню", callback_data="valuation:excel:menu")],
+        ]
+    )
+
+
+def valuation_faq_price_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Как оценивается моя фирма?", callback_data="valuation:faq:q:price_calc")],
+            [InlineKeyboardButton(text="А если у меня долги?", callback_data="valuation:faq:q:price_debt")],
+            [InlineKeyboardButton(text="Сколько я получу за 25%?", callback_data="valuation:faq:q:price_25")],
+            [InlineKeyboardButton(text="Cash-In vs Cash-Out — что выгоднее?", callback_data="valuation:faq:q:price_cash")],
+            [InlineKeyboardButton(text="↩️ К темам", callback_data="valuation:faq:topics")],
+        ]
+    )
+
+
+def valuation_faq_roles_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Что изменится в управлении?", callback_data="valuation:faq:q:roles_mgmt")],
+            [InlineKeyboardButton(text="Могут ли меня уволить?", callback_data="valuation:faq:q:roles_fire")],
+            [InlineKeyboardButton(text="↩️ К темам", callback_data="valuation:faq:topics")],
+        ]
+    )
+
+
+def valuation_faq_process_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Шаги от знакомства до сделки", callback_data="valuation:faq:q:process_steps")],
+            [InlineKeyboardButton(text="А можно быстрее?", callback_data="valuation:faq:q:process_fast")],
+            [InlineKeyboardButton(text="↩️ К темам", callback_data="valuation:faq:topics")],
+        ]
+    )
+
+
+def valuation_faq_ai_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Как быстро заработает ИИ?", callback_data="valuation:faq:q:ai_speed")],
+            [InlineKeyboardButton(text="Сколько стоит внедрение?", callback_data="valuation:faq:q:ai_cost")],
+            [InlineKeyboardButton(text="Что автоматизируется?", callback_data="valuation:faq:q:ai_scope")],
+            [InlineKeyboardButton(text="↩️ К темам", callback_data="valuation:faq:topics")],
+        ]
+    )
+
+
+def valuation_faq_changes_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Что изменится для моих клиентов?", callback_data="valuation:faq:q:changes_clients")],
+            [InlineKeyboardButton(text="А что с моей командой?", callback_data="valuation:faq:q:changes_team")],
+            [InlineKeyboardButton(text="↩️ К темам", callback_data="valuation:faq:topics")],
+        ]
+    )
+
+
+def valuation_faq_legal_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Как юридически оформлена сделка?", callback_data="valuation:faq:q:legal_structure")],
+            [InlineKeyboardButton(text="А если я захочу выйти?", callback_data="valuation:faq:q:legal_exit")],
+            [InlineKeyboardButton(text="↩️ К темам", callback_data="valuation:faq:topics")],
+        ]
+    )
+
+
 def calendly_meeting_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
