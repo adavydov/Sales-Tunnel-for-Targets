@@ -441,8 +441,8 @@ def valuation_excel_offer_keyboard() -> InlineKeyboardMarkup:
 def valuation_idle_followup_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Модели", callback_data="valuation:idle:models")],
-            [InlineKeyboardButton(text="Вопросы", callback_data="valuation:idle:faq")],
+            [InlineKeyboardButton(text="🚀 Модели", callback_data="valuation:idle:models")],
+            [InlineKeyboardButton(text="❓ Вопросы", callback_data="valuation:idle:faq")],
         ]
     )
 

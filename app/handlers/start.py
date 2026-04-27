@@ -1503,14 +1503,14 @@ async def valuation_idle_models(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer_photo(
         photo=VALUATION_MODELS_IMAGE_URL,
         caption=(
-            "Модели\n"
+            "<b>🚀 Модели</b>\n"
             "Мы предлагаем 4 сценария — от «ничего не делать» до «построить группу компаний». "
             "Каждый влияет на вашу прибыль по-разному.\n\n"
-            f"Иллюстрация сценариев: {VALUATION_MODELS_IMAGE_URL}\n\n"
             f"Сценарий компании с прибылью {format_mln(profit_mln)} млн ₽\n"
             f"Оценка компании: {format_mln(profit_mln)} × {VALUATION_MULTIPLE:.1f} = {format_mln(valuation_mln)} млн ₽\n"
             f"Стоимость 25% для инвестора: {format_mln(investor_25_mln)} млн ₽"
         ),
+        parse_mode="HTML",
     )
     await callback.answer()
 
