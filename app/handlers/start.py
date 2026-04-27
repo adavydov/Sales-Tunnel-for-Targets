@@ -1,5 +1,6 @@
 import logging
 import re
+import asyncio
 from datetime import date, datetime, time
 from pathlib import Path
 from urllib.parse import quote
@@ -46,12 +47,30 @@ from app.keyboards import (
     simulate_results_keyboard,
     simulate_skip_question_keyboard,
     tool_consent_keyboard,
+    valuation_continue_keyboard,
+    valuation_intro_keyboard,
+    valuation_low_share_keyboard,
+    valuation_mode_keyboard,
+    valuation_profitability_keyboard,
+    valuation_share_keyboard,
+    valuation_q6_share_keyboard,
+    valuation_q8_automation_level_keyboard,
+    valuation_automation_tools_keyboard,
+    valuation_excel_offer_keyboard,
+    valuation_idle_followup_keyboard,
+    valuation_faq_topics_keyboard,
+    valuation_faq_price_keyboard,
+    valuation_faq_roles_keyboard,
+    valuation_faq_process_keyboard,
+    valuation_faq_ai_keyboard,
+    valuation_faq_changes_keyboard,
+    valuation_faq_legal_keyboard,
 )
 from app.scoring import (
     calculate_express_operation_savings,
     calculate_precise_savings_from_express,
 )
-from app.states import MeetingBookingFlow, SimulateFlow, ToolConsentFlow
+from app.states import MeetingBookingFlow, SimulateFlow, ToolConsentFlow, ValuationFlow
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -66,7 +85,7 @@ ONBOARDING_PROMO_TEXT = (
     "Что здесь:\n"
     "📊 Новости, события, новые партнёры\n"
     "💰 Калькулятор вашей экономии\n"
-    "📈 Оценка стоимости вашей фирмы\n"
+    "📈 Сделка и рост\n"
     "📅 Запись на встречу со специалистом\n\n"
     "Выберите раздел в меню ниже 👇"
 )
@@ -142,6 +161,21 @@ ADVISORY_LABELS = {
     "10_20": "10-20%",
     "gt20": "Более 20%",
 }
+VALUATION_SHARE_MAP = {
+    "40_60": 55.0,
+    "60_80": 70.0,
+    "gt80": 85.0,
+    "unknown_main": 60.0,
+}
+VALUATION_LOW_SHARE_OPTIONS = {"lt40", "unknown_small"}
+VALUATION_PROFITABILITY_MAP = {
+    "15_20": 17.5,
+    "20_25": 22.5,
+    "25_30": 27.5,
+    "30_35": 30.0,
+    "gt35": 35.0,
+    "unknown": 25.0,
+}
 WAIT_FILE_TEXT = (
     "Ожидаем ваш файл.\n\n"
     "Вы можете загрузить Excel сюда или нажать «Отправил по почте», если уже отправили на success@aivel.ai."
@@ -157,6 +191,27 @@ MISSING_PERSONAL_DATA_TEXT = (
 MEETING_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 DEFAULT_EXPRESS_ACCOUNTANTS = 15
 DEFAULT_EXPRESS_SALARY = 120000
+VALUATION_RUB_INPUT_THRESHOLD = 1000
+VALUATION_MULTIPLE = 2.5
+VALUATION_IDLE_TIMEOUT_SECONDS = 60
+VALUATION_Q6_RF2_MAP = {
+    "lt20": 1.1,
+    "20_40": 1.0,
+    "40_60": 0.9,
+    "60_80": 0.8,
+    "gt80": 0.7,
+}
+VALUATION_POST_RESULT_STATE = {
+    ValuationFlow.precise_post_result.state,
+}
+VALUATION_IDLE_TASKS: dict[int, asyncio.Task] = {}
+VALUATION_EXCEL_TEXT = (
+    "🎯 Если вы серьёзно рассматриваете партнёрство с нашим участием в технологиях и финансировании, "
+    "давайте заполним наш подробный Excel-инструмент для оценки сделки.\n"
+    "Загрузите Excel — получите полный бизнес-кейс от нашей команды."
+)
+VALUATION_MODELS_IMAGE_URL = "https://disk.yandex.com/i/SXmB484oG0gfzg"
+VALUATION_ROLES_IMAGE_URL = "https://disk.yandex.com/i/bxE4nm-98rX3aA"
 
 
 
@@ -180,6 +235,164 @@ def parse_positive_int(raw_value: str) -> int | None:
         return None
     value = int(normalized)
     return value if value > 0 else None
+
+
+def parse_float(raw_value: str) -> float | None:
+    normalized = raw_value.strip().replace(" ", "").replace(",", ".").replace("_", "")
+    if normalized.count(".") > 1:
+        return None
+    try:
+        value = float(normalized)
+    except ValueError:
+        return None
+    return value
+
+
+def valuation_rf1_score(total_clients: int, key_clients: int) -> float:
+    ratio = (key_clients / total_clients) * 100
+    if ratio <= 10:
+        return 1.1
+    if ratio <= 20:
+        return 1.0
+    if ratio <= 35:
+        return 0.9
+    if ratio <= 50:
+        return 0.8
+    return 0.7
+
+
+def valuation_rf3_score(total_clients: int) -> float:
+    if total_clients >= 200:
+        return 1.1
+    if 150 <= total_clients <= 200:
+        return 1.0
+    if 100 <= total_clients <= 149:
+        return 0.9
+    if 50 <= total_clients <= 99:
+        return 0.8
+    return 0.7
+
+
+def format_mln(value: float) -> str:
+    return f"{value:.1f}".replace(".", ",")
+
+
+def cancel_valuation_idle_task(user_id: int) -> None:
+    task = VALUATION_IDLE_TASKS.pop(user_id, None)
+    if task and not task.done():
+        task.cancel()
+
+
+async def schedule_valuation_idle_followup(message: Message, state: FSMContext, user_id: int):
+    cancel_valuation_idle_task(user_id)
+    marker = datetime.utcnow().isoformat()
+    await state.update_data(valuation_idle_marker=marker)
+
+    async def _idle_ping():
+        try:
+            await asyncio.sleep(VALUATION_IDLE_TIMEOUT_SECONDS)
+            current_state = await state.get_state()
+            data = await state.get_data()
+            if current_state not in VALUATION_POST_RESULT_STATE:
+                return
+            if data.get("valuation_idle_marker") != marker:
+                return
+            await message.answer(
+                "Хотели бы вы узнать о наших моделях сотрудничества или предпочли бы ознакомиться с разделом «Вопросы»?",
+                reply_markup=valuation_idle_followup_keyboard(),
+            )
+        except asyncio.CancelledError:
+            return
+
+    VALUATION_IDLE_TASKS[user_id] = asyncio.create_task(_idle_ping())
+
+
+async def send_valuation_faq_topics(message: Message):
+    await message.answer(
+        "Всё о сделке — частые вопросы ❓\n\n"
+        "Выберите тему:",
+        reply_markup=valuation_faq_topics_keyboard(),
+    )
+
+
+def valuation_faq_answers() -> dict[str, str]:
+    return {
+        "price_calc": (
+            "Формула простая:\n"
+            "<b>Чистая прибыль × 2.5 = стоимость фирмы</b>\n"
+            "Например: прибыль 5.3 млн ₽ → оценка 13.3 млн ₽.\n\n"
+            "Мультипликатор 2.5× — это стандарт для бухгалтерских фирм с устойчивой клиентской базой.\n"
+            "Он может корректироваться в зависимости от клиентов, доли постоянных договоров и долговой нагрузки."
+        ),
+        "price_debt": (
+            "Долги вычитаются из оценки.\n"
+            "Пример: прибыль 8 млн × 2.5 = 20 млн ₽, долг 2 млн ₽.\n"
+            "<b>Чистая стоимость: 18 млн ₽.</b>"
+        ),
+        "price_25": (
+            "Зависит от формата сделки:\n\n"
+            "💵 <b>Cash-Out</b> — деньги вам на руки: 25% от оценки.\n"
+            "🏗️ <b>Cash-In</b> — деньги идут в компанию на рост.\n"
+            "🔄 <b>Микс</b> — часть вам, часть в компанию."
+        ),
+        "price_cash": (
+            "<b>Cash-In</b> обычно выгоднее через 2–3 года, если цель — рост.\n"
+            "<b>Cash-Out</b> — для тех, кому важна ликвидность сейчас."
+        ),
+        "roles_mgmt": (
+            "Что изменится в управлении:\n"
+            "• Операционка и клиенты остаются за управляющим партнёром.\n"
+            "• AIVEL берёт на себя ИИ/IT-платформу и со-лидит M&A и маркетинг.\n"
+            "• Ключевые решения фиксируются в соглашении."
+        ),
+        "roles_fire": (
+            "Нет. Вы — совладелец и управляющий партнёр.\n"
+            "Ваш статус закреплён в акционерном соглашении, изменения возможны только по процедуре, "
+            "согласованной обеими сторонами."
+        ),
+        "process_steps": (
+            "Процесс обычно занимает 4–8 недель:\n"
+            "1️⃣ Знакомство\n2️⃣ Анкета и оценка\n3️⃣ Персональная модель\n"
+            "4️⃣ Переговоры по структуре\n5️⃣ Due diligence\n6️⃣ Подписание и запуск внедрения."
+        ),
+        "process_fast": (
+            "Да, можно быстрее — до 3–4 недель, если документы готовы и формат сделки определён заранее."
+        ),
+        "ai_speed": (
+            "Внедрение идёт в 3 этапа:\n"
+            "⚙️ Месяцы 1–3: подключение и настройка\n"
+            "🚀 Месяцы 4–6: первые результаты\n"
+            "🏆 Месяцы 7–18: максимальная автоматизация."
+        ),
+        "ai_cost": (
+            "Зависит от формата:\n"
+            "• Без сделки (только ИИ): 2–3 млн ₽ за внедрение.\n"
+            "• В партнёрстве: обычно внедрение идёт за счёт инвестиций в компанию."
+        ),
+        "ai_scope": (
+            "Сейчас автоматизируем: первичку, банковские выписки, акты сверки, тикетинг и отчётность.\n"
+            "Система развивается ежемесячно — новые модули и интеграции добавляются автоматически."
+        ),
+        "changes_clients": (
+            "Для клиентов и контрагентов становится быстрее и удобнее:\n"
+            "✅ Быстрее обработка документов\n✅ Меньше ошибок\n✅ Омниканальный приём обращений (мессенджеры/портал/email).\n\n"
+            "При этом бренд не меняется, договоры не переоформляются."
+        ),
+        "changes_team": (
+            "Команда остаётся с вами. Вы управляете наймом и увольнением.\n"
+            "Что меняется: меньше рутины, больше сложных задач и консалтинга, возможна оптимизация нагрузки."
+        ),
+        "legal_structure": (
+            "Основные документы:\n"
+            "📜 Акционерное соглашение\n📋 Корпоративный договор\n\n"
+            "Что защищает вас: право вето на ключевые решения, прозрачная дивидендная политика, "
+            "право первого отказа при продаже доли."
+        ),
+        "legal_exit": (
+            "Механизм выхода фиксируется заранее в соглашении.\n"
+            "Обычно доступны: обратный выкуп, продажа третьему лицу с ROFR у AIVEL, совместный выход на пике стоимости."
+        ),
+    }
 
 
 def format_mln_range(min_savings_rub: int, max_savings_rub: int) -> str:
@@ -289,6 +502,25 @@ async def send_simulate_mode_menu(target: Message | CallbackQuery, state: FSMCon
     )
 
 
+async def send_valuation_mode_menu(target: Message | CallbackQuery, state: FSMContext):
+    await state.clear()
+    await state.set_state(ValuationFlow.mode_select)
+
+    text = (
+        "Ваша фирма 2.0 — это не продажа бизнеса. Это апгрейд.\n"
+        "Мы покажем, как партнёрство с AIVEL может изменить экономику вашей фирмы: "
+        "больше прибыли, автоматизация рутины и капитал для роста.\n"
+        "Выберите, с чего начать:"
+    )
+
+    if isinstance(target, CallbackQuery):
+        await target.message.answer(text, reply_markup=valuation_mode_keyboard())
+        await target.answer()
+        return
+
+    await target.answer(text, reply_markup=valuation_mode_keyboard())
+
+
 async def ensure_simulate_consent(callback: CallbackQuery, state: FSMContext) -> bool:
     user_id = await get_db_user_id(callback)
     already_accepted = await get_tool_consent(user_id, "simulate")
@@ -376,18 +608,16 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
             await send_simulate_mode_menu(message_or_callback, state)
             return
 
+        if tool_name == "valuation":
+            await send_valuation_mode_menu(message_or_callback, state)
+            return
+
         if isinstance(message_or_callback, CallbackQuery):
-            await message_or_callback.message.answer(
-                TOOL_PLACEHOLDER_TEXT,
-                reply_markup=persistent_main_keyboard(),
-            )
+            await message_or_callback.message.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
             await message_or_callback.answer()
             return
 
-        await message_or_callback.answer(
-            TOOL_PLACEHOLDER_TEXT,
-            reply_markup=persistent_main_keyboard(),
-        )
+        await message_or_callback.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
         return
 
     await state.clear()
@@ -441,7 +671,7 @@ async def open_simulate_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "simulate")
 
 
-@router.message(StateFilter(None), F.text == "Оценка стоимости фирмы (скоро)")
+@router.message(StateFilter(None), F.text.in_({"Сделка и рост", "Оценка стоимости фирмы (скоро)"}))
 async def open_valuation_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "valuation")
 
@@ -511,6 +741,10 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(CONSENT_ACCEPTED_TEXT)
     if tool_name == "simulate":
         await send_simulate_mode_menu(callback, state)
+        return
+
+    if tool_name == "valuation":
+        await send_valuation_mode_menu(callback, state)
         return
 
     await state.clear()
@@ -808,6 +1042,538 @@ async def simulate_mode_pro(callback: CallbackQuery, state: FSMContext):
     await add_event(user_id, "simulate_mode_selected", "pro")
 
     await send_excel_and_wait_for_user(callback, state)
+
+
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:back")
+async def valuation_back_to_main(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await return_to_base_state(callback.message, state, THANKS_TOOL_TEXT)
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:mode:express")
+async def valuation_mode_express(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await callback.message.answer(
+        "⚡ <b>Экспресс-оценка</b>\n\n"
+        "Ответьте на 3 вопроса — и мы мгновенно рассчитаем:\n"
+        "• стоимость вашей фирмы\n"
+        "• сумму, которую вы получите при сделке\n"
+        "• ваш доход за 5 лет с партнёрством и без",
+        parse_mode="HTML",
+        reply_markup=valuation_intro_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:mode:excel")
+async def valuation_mode_excel(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await callback.answer()
+    await callback.message.answer(VALUATION_EXCEL_TEXT, reply_markup=valuation_excel_offer_keyboard())
+
+
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:mode:about")
+async def valuation_mode_about(callback: CallbackQuery):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await callback.answer()
+    await callback.message.answer(
+        "Блок «Сначала расскажите подробнее» будет добавлен в следующей части ТЗ."
+    )
+
+
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:express:start")
+async def valuation_express_start(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await state.set_state(ValuationFlow.express_revenue)
+    await callback.message.answer(
+        "<b>Q1: Какая годовая выручка вашей фирмы? (млн руб.)</b>\n\n"
+        "Просто напишите число, например: 30",
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.message(ValuationFlow.express_revenue, F.text)
+async def valuation_express_revenue(message: Message, state: FSMContext):
+    user_id = await get_db_user_id(message)
+    cancel_valuation_idle_task(user_id)
+    revenue = parse_float(message.text)
+    if revenue is None:
+        await message.answer("Пожалуйста, введите число в миллионах рублей. Например: 30")
+        return
+    if revenue <= 0:
+        await message.answer("Введите положительное число больше нуля.")
+        return
+    if revenue > VALUATION_RUB_INPUT_THRESHOLD:
+        await message.answer(
+            "Похоже, вы ввели сумму в рублях. Введите в миллионах — например, 30 означает 30 млн руб."
+        )
+        return
+
+    await state.update_data(valuation_revenue_mln=revenue)
+    await state.set_state(ValuationFlow.express_share)
+    await message.answer(
+        "<b>Q2: Какая доля выручки приходится на базовый бухгалтерский аутсорсинг? (%)</b>\n\n"
+        "Это обработка первичных документов, сверки и банк-клиент. Без учёта аудита, консалтинга и прочих услуг.",
+        parse_mode="HTML",
+        reply_markup=valuation_share_keyboard(),
+    )
+
+
+@router.callback_query(ValuationFlow.express_share, F.data.startswith("valuation:share:"))
+async def valuation_express_share(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    option = callback.data.removeprefix("valuation:share:")
+    if option in VALUATION_LOW_SHARE_OPTIONS:
+        await callback.message.answer(
+            "Спасибо за ответ!\n"
+            "Сейчас мы фокусируемся на фирмах, где базовая бухгалтерия составляет основную часть бизнеса "
+            "(от 50% выручки).\n"
+            "Но если вы рассматриваете выделение бухгалтерского направления в отдельную структуру — "
+            "мы можем обсудить такой вариант с нашим менеджером.\n\n"
+            "Это может быть интересно, если:\n"
+            "• У вас есть устойчивый поток клиентов на базовую бухгалтерию\n"
+            "• Вы хотите сфокусироваться на консалтинге / аудите\n"
+            "• Бухгалтерское направление можно выделить без потери клиентов",
+            reply_markup=valuation_low_share_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    share = VALUATION_SHARE_MAP.get(option)
+    if share is None:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    await state.update_data(valuation_share_percent=share)
+    await state.set_state(ValuationFlow.express_profitability)
+    await callback.message.answer(
+        "<b>Q3: Какая коммерческая маржа (прибыльность) на базовых бухгалтерских услугах (P)?</b>\n\n"
+        "Это прибыль от базовой бухгалтерии ÷ выручка от базовой бухгалтерии.",
+        parse_mode="HTML",
+        reply_markup=valuation_profitability_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.express_share, F.data == "valuation:low_share:not_now")
+async def valuation_low_share_not_now(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await return_to_base_state(
+        callback.message,
+        state,
+        "Понял! Если что-то изменится — мы всегда здесь. "
+        "Вы по-прежнему будете получать новости и обновления продуктов. "
+        "Удачи в развитии бизнеса! 🤝",
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.express_profitability, F.data.startswith("valuation:profit:"))
+async def valuation_express_profitability(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    option = callback.data.removeprefix("valuation:profit:")
+    profitability = VALUATION_PROFITABILITY_MAP.get(option)
+    if profitability is None:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    data = await state.get_data()
+    revenue_mln = float(data["valuation_revenue_mln"])
+    profit_mln = revenue_mln * (profitability / 100)
+    valuation_mln = round(profit_mln * VALUATION_MULTIPLE, 1)
+    profit_mln_rounded = round(profit_mln, 1)
+
+    await state.update_data(
+        valuation_profitability_percent=profitability,
+        valuation_profit_mln=profit_mln_rounded,
+        valuation_result_mln=valuation_mln,
+    )
+
+    await add_event(
+        user_id,
+        "valuation_express_completed",
+        (
+            f"revenue_mln={revenue_mln};share={data.get('valuation_share_percent')};"
+            f"profitability={profitability};profit_mln={profit_mln_rounded};valuation_mln={valuation_mln}"
+        ),
+    )
+
+    await state.set_state(ValuationFlow.express_continue)
+    loading_message = await callback.message.answer("⏳ Оцениваем вашу фирму...")
+    await delete_message_safe(loading_message)
+    await callback.message.answer(
+        "Оценка стоимости вашей фирмы\n"
+        f"{profit_mln_rounded:.1f} × {VALUATION_MULTIPLE:.1f} = {valuation_mln:.1f} млн руб.\n"
+        "— стандарт для бухгалтерских практик\n\n"
+        "Есть несколько важных нюансов, которые нужно уточнить. "
+        "Вы согласны ответить на ещё несколько вопросов, чтобы быть точнее и учесть важные моменты?",
+        reply_markup=valuation_continue_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.express_continue, F.data == "valuation:continue:yes")
+async def valuation_continue_yes(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await state.set_state(ValuationFlow.precise_clients_total)
+    await callback.message.answer(
+        "Отлично! Теперь несколько вопросов о вашем клиентском портфеле и команде. "
+        "Это поможет нам понять, как ИИ-автоматизация и инвестиции лучше всего впишутся именно в вашу фирму.\n\n"
+        "Ещё 5 вопросов — займёт пару минут 👇\n\n"
+        "<b>Q4: Сколько у вас активных клиентов?</b>\n\n"
+        "Считайте только тех, кто получает услуги по базовой бухгалтерии. "
+        "Напишите одно число (например: 50, 250, 500).",
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.express_continue, F.data == "valuation:continue:no")
+async def valuation_continue_no(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await return_to_base_state(
+        callback.message,
+        state,
+        "Спасибо, что нашли время пройти нашу экспресс-оценку компании 🙌\n"
+        "Каждый день мы делимся в этом чате материалами о нашей работе и достижениях 📚✨. "
+        "Если вы хотите назначить звонок, чтобы обсудить возможную сделку, "
+        "нажмите «Забронировать встречу» в меню 📅. "
+        "В противном случае будем рады встретиться с вами на одном из наших ближайших мероприятий "
+        "— список доступен в меню 🤝.",
+    )
+    await callback.answer()
+
+
+@router.message(ValuationFlow.precise_clients_total, F.text)
+async def valuation_precise_q4_clients_total(message: Message, state: FSMContext):
+    user_id = await get_db_user_id(message)
+    cancel_valuation_idle_task(user_id)
+    value = parse_positive_int(message.text.strip())
+    if value is None:
+        await message.answer("Пожалуйста, введите число активных клиентов. Например: 250")
+        return
+
+    await state.update_data(valuation_c1=value)
+    await state.set_state(ValuationFlow.precise_clients_key)
+    await message.answer(
+        "<b>Q5: Сколько клиентов приносят основную часть вашей выручки от базовой бухгалтерии?</b>\n\n"
+        "Подсказка: обычно 10–20% клиентов дают 80% дохода.\n"
+        "Напишите одно число (например: 5, 15, 40).",
+        parse_mode="HTML",
+    )
+
+
+@router.message(ValuationFlow.precise_clients_key, F.text)
+async def valuation_precise_q5_key_clients(message: Message, state: FSMContext):
+    user_id = await get_db_user_id(message)
+    cancel_valuation_idle_task(user_id)
+    key_clients = parse_positive_int(message.text.strip())
+    if key_clients is None:
+        await message.answer("Пожалуйста, введите число ключевых клиентов. Например: 15")
+        return
+
+    data = await state.get_data()
+    total_clients = int(data["valuation_c1"])
+    if key_clients > total_clients:
+        await message.answer(
+            "Количество ключевых клиентов не может быть больше общего числа активных клиентов. "
+            "Проверьте значение и введите ещё раз."
+        )
+        return
+
+    await state.update_data(valuation_c2=key_clients)
+    await state.set_state(ValuationFlow.precise_top5_share)
+    await message.answer(
+        "<b>Q6: Какую долю выручки от базовой бухгалтерии приносят ваши 5 крупнейших клиентов?</b>",
+        parse_mode="HTML",
+        reply_markup=valuation_q6_share_keyboard(),
+    )
+
+
+@router.callback_query(ValuationFlow.precise_top5_share, F.data.startswith("valuation:q6:"))
+async def valuation_precise_q6_top5_share(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    option = callback.data.removeprefix("valuation:q6:")
+    if option not in VALUATION_Q6_RF2_MAP:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    await state.update_data(valuation_c3=option)
+    await state.set_state(ValuationFlow.precise_headcount)
+    await callback.message.answer(
+        "<b>Q7: Сколько бухгалтеров занято на базовых операциях?</b>\n\n"
+        "Первичка, сверки, банк-клиент — не считая руководителей направлений и аудиторов.\n"
+        "Напишите одно число (например: 5, 15, 40).",
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.message(ValuationFlow.precise_headcount, F.text)
+async def valuation_precise_q7_headcount(message: Message, state: FSMContext):
+    user_id = await get_db_user_id(message)
+    cancel_valuation_idle_task(user_id)
+    headcount = parse_positive_int(message.text.strip())
+    if headcount is None:
+        await message.answer("Пожалуйста, введите число сотрудников. Например: 15")
+        return
+
+    await state.update_data(valuation_h=headcount)
+    await state.set_state(ValuationFlow.precise_automation_level)
+    await message.answer(
+        "<b>Q8: Используете ли вы инструменты автоматизации в бухгалтерии?</b>\n\n"
+        "Выберите вариант ответа:",
+        parse_mode="HTML",
+        reply_markup=valuation_q8_automation_level_keyboard(),
+    )
+
+
+@router.callback_query(ValuationFlow.precise_automation_level, F.data.startswith("valuation:q8:"))
+async def valuation_precise_q8_automation_level(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    option = callback.data.removeprefix("valuation:q8:")
+    if option not in {"none", "partial", "advanced"}:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    await state.update_data(valuation_q8_level=option)
+    if option != "advanced":
+        await valuation_send_precise_result(callback.message, state)
+        await callback.answer()
+        return
+
+    await state.set_state(ValuationFlow.precise_automation_tools)
+    await state.update_data(valuation_auto_tools=[])
+    await callback.message.answer(
+        "Серьёзный уровень! Какие решения используете?\n"
+        "Отметьте всё, что подходит — мы учтём это при планировании перехода на платформу AIVEL.",
+        reply_markup=valuation_automation_tools_keyboard(set()),
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.precise_automation_tools, F.data.startswith("valuation:auto:toggle:"))
+async def valuation_q8_auto_toggle(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    option = callback.data.removeprefix("valuation:auto:toggle:")
+    allowed = {"rpa", "bots", "ocr", "ai", "bi"}
+    if option not in allowed:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    data = await state.get_data()
+    selected = set(data.get("valuation_auto_tools", []))
+    if option in selected:
+        selected.remove(option)
+    else:
+        selected.add(option)
+
+    await state.update_data(valuation_auto_tools=sorted(selected))
+    await callback.message.edit_reply_markup(reply_markup=valuation_automation_tools_keyboard(selected))
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.precise_automation_tools, F.data == "valuation:auto:other:hint")
+async def valuation_q8_auto_other_hint(callback: CallbackQuery):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await callback.answer()
+    await callback.message.answer("Напишите в чат, какие ещё решения используете. Затем нажмите «✅ Готово».")
+
+
+@router.message(ValuationFlow.precise_automation_tools, F.text)
+async def valuation_q8_auto_other_text(message: Message, state: FSMContext):
+    user_id = await get_db_user_id(message)
+    cancel_valuation_idle_task(user_id)
+    raw = message.text.strip()
+    if not raw:
+        await message.answer("Опишите решение текстом или нажмите «✅ Готово».")
+        return
+
+    data = await state.get_data()
+    custom = data.get("valuation_auto_other", [])
+    custom.append(raw)
+    await state.update_data(valuation_auto_other=custom)
+    await message.answer("Добавили. Если нужно, отправьте ещё вариант или нажмите «✅ Готово».")
+
+
+@router.callback_query(ValuationFlow.precise_automation_tools, F.data == "valuation:auto:done")
+async def valuation_q8_auto_done(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await valuation_send_precise_result(callback.message, state)
+    await callback.answer()
+
+
+async def valuation_send_precise_result(message: Message, state: FSMContext):
+    data = await state.get_data()
+    c1 = int(data["valuation_c1"])
+    c2 = int(data["valuation_c2"])
+    c3 = str(data["valuation_c3"])
+    express_valuation = float(data.get("valuation_result_mln", 0.0))
+
+    rf1 = valuation_rf1_score(c1, c2)
+    rf2 = VALUATION_Q6_RF2_MAP[c3]
+    rf3 = valuation_rf3_score(c1)
+    rf_comp = round((rf1 * 0.4) + (rf2 * 0.4) + (rf3 * 0.2), 2)
+    new_valuation = round(express_valuation * rf_comp, 1)
+
+    if rf_comp >= 1.00:
+        emoji, comment = "🟢", (
+            "Ваш клиентский портфель хорошо диверсифицирован — это повышает устойчивость бизнеса и его оценку."
+        )
+    elif 0.90 <= rf_comp <= 0.99:
+        emoji, comment = "🟡", (
+            "Портфель имеет умеренную концентрацию. После вступления в сеть мы поможем расширить клиентскую базу через маркетинг и M&A."
+        )
+    elif 0.80 <= rf_comp <= 0.89:
+        emoji, comment = "🟠", (
+            "Есть зависимость от крупных клиентов. Одна из первых задач после партнёрства — диверсификация через привлечение новых клиентов и небольшие приобретения."
+        )
+    else:
+        emoji, comment = "🔴", (
+            "Высокая зависимость от нескольких клиентов — это главный риск. Мы обсудим план диверсификации на звонке с менеджером."
+        )
+
+    user_id = await get_db_user_id(message)
+    await add_event(
+        user_id,
+        "valuation_precise_completed",
+        (
+            f"c1={c1};c2={c2};c3={c3};rf1={rf1:.2f};rf2={rf2:.2f};rf3={rf3:.2f};"
+            f"rfcomp={rf_comp:.2f};express={express_valuation:.1f};new={new_valuation:.1f}"
+        ),
+    )
+
+    await state.update_data(valuation_rfcomp=rf_comp, valuation_new_result_mln=new_valuation)
+    await state.set_state(ValuationFlow.precise_post_result)
+    loading_message = await message.answer("⏳ Оцениваем вашу фирму...")
+    await delete_message_safe(loading_message)
+    await message.answer(
+        "Новая оценка вашей фирмы: "
+        f"<b>{format_mln(new_valuation)} млн руб.</b>\n\n"
+        "Результаты анализа клиентского портфеля, на основе ваших ответов мы оценили устойчивость клиентской базы:\n"
+        f"{emoji} <b>RFcomp: {rf_comp:.2f}</b>\n"
+        f"{comment}",
+        parse_mode="HTML",
+    )
+    await message.answer(VALUATION_EXCEL_TEXT, reply_markup=valuation_excel_offer_keyboard())
+    await schedule_valuation_idle_followup(message, state, user_id)
+
+
+@router.callback_query(F.data == "valuation:excel:download")
+async def valuation_post_excel_download(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await send_excel_and_wait_for_user(callback, state)
+
+
+@router.callback_query(F.data == "valuation:excel:menu")
+async def valuation_post_back_to_menu(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await return_to_base_state(callback.message, state, THANKS_TOOL_TEXT)
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.precise_post_result, F.data == "valuation:idle:models")
+async def valuation_idle_models(callback: CallbackQuery, state: FSMContext):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    data = await state.get_data()
+    profit_mln = float(data.get("valuation_profit_mln", 8.0))
+    valuation_mln = round(profit_mln * VALUATION_MULTIPLE, 1)
+    investor_25_mln = round(valuation_mln * 0.25, 1)
+
+    await callback.message.answer(
+        "Модели\n"
+        "Мы предлагаем 4 сценария — от «ничего не делать» до «построить группу компаний». "
+        "Каждый влияет на вашу прибыль по-разному."
+    )
+    await callback.message.answer(
+        f"Иллюстрация сценариев: {VALUATION_MODELS_IMAGE_URL}",
+        disable_web_page_preview=False,
+    )
+    await callback.message.answer(
+        f"Сценарий компании с прибылью {format_mln(profit_mln)} млн ₽\n"
+        f"Оценка компании: {format_mln(profit_mln)} × {VALUATION_MULTIPLE:.1f} = {format_mln(valuation_mln)} млн ₽\n"
+        f"Стоимость 25% для инвестора: {format_mln(investor_25_mln)} млн ₽",
+    )
+    await send_valuation_faq_topics(callback.message)
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.precise_post_result, F.data == "valuation:idle:faq")
+async def valuation_idle_faq(callback: CallbackQuery):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await send_valuation_faq_topics(callback.message)
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.precise_post_result, F.data == "valuation:faq:topics")
+async def valuation_faq_topics(callback: CallbackQuery):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    await send_valuation_faq_topics(callback.message)
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.precise_post_result, F.data.startswith("valuation:faq:topic:"))
+async def valuation_faq_topic_selected(callback: CallbackQuery):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    topic = callback.data.removeprefix("valuation:faq:topic:")
+    mapping = {
+        "price": ("Оценка и цена", valuation_faq_price_keyboard()),
+        "roles": ("Кто за что отвечает", valuation_faq_roles_keyboard()),
+        "process": ("Как проходит сделка", valuation_faq_process_keyboard()),
+        "ai": ("Внедрение ИИ", valuation_faq_ai_keyboard()),
+        "changes": ("Что меняется в фирме", valuation_faq_changes_keyboard()),
+        "legal": ("Юридические вопросы", valuation_faq_legal_keyboard()),
+    }
+    selected = mapping.get(topic)
+    if selected is None:
+        await callback.answer("Неизвестная тема", show_alert=True)
+        return
+
+    title, keyboard = selected
+    await callback.message.answer(f"Раздел: <b>{title}</b>\n\nВыберите вопрос:", parse_mode="HTML", reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.precise_post_result, F.data.startswith("valuation:faq:q:"))
+async def valuation_faq_question_selected(callback: CallbackQuery):
+    user_id = await get_db_user_id(callback)
+    cancel_valuation_idle_task(user_id)
+    question_id = callback.data.removeprefix("valuation:faq:q:")
+    answers = valuation_faq_answers()
+    text = answers.get(question_id)
+    if text is None:
+        await callback.answer("Ответ пока не найден", show_alert=True)
+        return
+
+    if question_id == "roles_mgmt":
+        await callback.message.answer(f"Матрица ролей: {VALUATION_ROLES_IMAGE_URL}", disable_web_page_preview=False)
+
+    await callback.message.answer(text, parse_mode="HTML")
+    await callback.message.answer("Вы можете выбрать другой вопрос или вернуться к темам.", reply_markup=valuation_faq_topics_keyboard())
+    await callback.answer()
 
 
 @router.message(SimulateFlow.express_accountants, F.text)
