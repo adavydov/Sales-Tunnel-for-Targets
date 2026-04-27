@@ -429,12 +429,11 @@ def valuation_automation_tools_keyboard(selected: set[str]) -> InlineKeyboardMar
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def valuation_post_result_keyboard() -> InlineKeyboardMarkup:
+def valuation_excel_offer_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📥 Скачать Excel-файл", callback_data="valuation:excel:download")],
-            [InlineKeyboardButton(text="📤 Отправил на почту", callback_data="valuation:excel:sent_email")],
-            [InlineKeyboardButton(text="↩️ В меню", callback_data="valuation:post:menu")],
+            [InlineKeyboardButton(text="↩️ В меню", callback_data="valuation:excel:menu")],
         ]
     )
 

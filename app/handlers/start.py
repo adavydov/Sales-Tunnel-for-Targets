@@ -56,7 +56,7 @@ from app.keyboards import (
     valuation_q6_share_keyboard,
     valuation_q8_automation_level_keyboard,
     valuation_automation_tools_keyboard,
-    valuation_post_result_keyboard,
+    valuation_excel_offer_keyboard,
     valuation_idle_followup_keyboard,
 )
 from app.scoring import (
@@ -198,6 +198,11 @@ VALUATION_POST_RESULT_STATE = {
     ValuationFlow.precise_post_result.state,
 }
 VALUATION_IDLE_TASKS: dict[int, asyncio.Task] = {}
+VALUATION_EXCEL_TEXT = (
+    "🎯 Если вы серьёзно рассматриваете партнёрство с нашим участием в технологиях и финансировании, "
+    "давайте заполним наш подробный Excel-инструмент для оценки сделки.\n"
+    "Загрузите Excel — получите полный бизнес-кейс от нашей команды."
+)
 
 
 
@@ -967,13 +972,11 @@ async def valuation_mode_express(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(ValuationFlow.mode_select, F.data == "valuation:mode:excel")
-async def valuation_mode_excel(callback: CallbackQuery):
+async def valuation_mode_excel(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
     cancel_valuation_idle_task(user_id)
     await callback.answer()
-    await callback.message.answer(
-        "Логику для «Заполнить в Excel для менеджера» добавим в следующей части ТЗ."
-    )
+    await callback.message.answer(VALUATION_EXCEL_TEXT, reply_markup=valuation_excel_offer_keyboard())
 
 
 @router.callback_query(ValuationFlow.mode_select, F.data == "valuation:mode:about")
@@ -1109,7 +1112,8 @@ async def valuation_express_profitability(callback: CallbackQuery, state: FSMCon
     )
 
     await state.set_state(ValuationFlow.express_continue)
-    await callback.message.answer("⏳ Оцениваем вашу фирму...")
+    loading_message = await callback.message.answer("⏳ Оцениваем вашу фирму...")
+    await delete_message_safe(loading_message)
     await callback.message.answer(
         "Оценка стоимости вашей фирмы\n"
         f"{profit_mln_rounded:.1f} × {VALUATION_MULTIPLE:.1f} = {valuation_mln:.1f} млн руб.\n"
@@ -1145,12 +1149,12 @@ async def valuation_continue_no(callback: CallbackQuery, state: FSMContext):
     await return_to_base_state(
         callback.message,
         state,
-        "Спасибо, что нашли время пройти нашу экспресс-оценку компании.\n"
-        "Каждый день мы делимся в этом чате материалами о нашей работе и достижениях. "
+        "Спасибо, что нашли время пройти нашу экспресс-оценку компании 🙌\n"
+        "Каждый день мы делимся в этом чате материалами о нашей работе и достижениях 📚✨. "
         "Если вы хотите назначить звонок, чтобы обсудить возможную сделку, "
-        "нажмите «Забронировать встречу» в меню. "
+        "нажмите «Забронировать встречу» в меню 📅. "
         "В противном случае будем рады встретиться с вами на одном из наших ближайших мероприятий "
-        "— список доступен в меню.",
+        "— список доступен в меню 🤝.",
     )
     await callback.answer()
 
@@ -1361,7 +1365,8 @@ async def valuation_send_precise_result(message: Message, state: FSMContext):
 
     await state.update_data(valuation_rfcomp=rf_comp, valuation_new_result_mln=new_valuation)
     await state.set_state(ValuationFlow.precise_post_result)
-    await message.answer("⏳ Оцениваем вашу фирму...")
+    loading_message = await message.answer("⏳ Оцениваем вашу фирму...")
+    await delete_message_safe(loading_message)
     await message.answer(
         "Новая оценка вашей фирмы: "
         f"<b>{format_mln(new_valuation)} млн руб.</b>\n\n"
@@ -1370,42 +1375,18 @@ async def valuation_send_precise_result(message: Message, state: FSMContext):
         f"{comment}",
         parse_mode="HTML",
     )
-    await message.answer(
-        "🎯 Если вы серьёзно рассматриваете партнёрство с нашим участием в технологиях и финансировании, "
-        "давайте заполним наш подробный Excel-инструмент для оценки сделки.\n"
-        "Загрузите Excel — получите полный бизнес-кейс от нашей команды.",
-        reply_markup=valuation_post_result_keyboard(),
-    )
+    await message.answer(VALUATION_EXCEL_TEXT, reply_markup=valuation_excel_offer_keyboard())
     await schedule_valuation_idle_followup(message, state, user_id)
 
 
-@router.callback_query(ValuationFlow.precise_post_result, F.data == "valuation:excel:download")
-async def valuation_post_excel_download(callback: CallbackQuery):
+@router.callback_query(F.data == "valuation:excel:download")
+async def valuation_post_excel_download(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
     cancel_valuation_idle_task(user_id)
-    excel_path = find_excel_template()
-    if excel_path is None:
-        await callback.message.answer(SIMULATE_PRO_MISSING_TEXT)
-        await callback.answer("Excel-файл пока не найден", show_alert=True)
-        return
-    await callback.message.answer_document(
-        document=FSInputFile(excel_path),
-        caption="📥 Excel-опросник для детальной оценки сделки",
-    )
-    await callback.message.answer("Заполнили? Отправьте файл сюда или на success@aivel.ai")
-    await callback.answer()
+    await send_excel_and_wait_for_user(callback, state)
 
 
-@router.callback_query(ValuationFlow.precise_post_result, F.data == "valuation:excel:sent_email")
-async def valuation_post_excel_sent_email(callback: CallbackQuery):
-    user_id = await get_db_user_id(callback)
-    cancel_valuation_idle_task(user_id)
-    await add_event(user_id, "valuation_post_excel_sent_email")
-    await callback.message.answer("Спасибо! Приняли отметку. Если нужно, продолжим в любое время.")
-    await callback.answer()
-
-
-@router.callback_query(ValuationFlow.precise_post_result, F.data == "valuation:post:menu")
+@router.callback_query(F.data == "valuation:excel:menu")
 async def valuation_post_back_to_menu(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
     cancel_valuation_idle_task(user_id)
