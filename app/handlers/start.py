@@ -46,12 +46,18 @@ from app.keyboards import (
     simulate_results_keyboard,
     simulate_skip_question_keyboard,
     tool_consent_keyboard,
+    valuation_continue_keyboard,
+    valuation_intro_keyboard,
+    valuation_low_share_keyboard,
+    valuation_mode_keyboard,
+    valuation_profitability_keyboard,
+    valuation_share_keyboard,
 )
 from app.scoring import (
     calculate_express_operation_savings,
     calculate_precise_savings_from_express,
 )
-from app.states import MeetingBookingFlow, SimulateFlow, ToolConsentFlow
+from app.states import MeetingBookingFlow, SimulateFlow, ToolConsentFlow, ValuationFlow
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -66,7 +72,7 @@ ONBOARDING_PROMO_TEXT = (
     "Что здесь:\n"
     "📊 Новости, события, новые партнёры\n"
     "💰 Калькулятор вашей экономии\n"
-    "📈 Оценка стоимости вашей фирмы\n"
+    "📈 Сделка и рост\n"
     "📅 Запись на встречу со специалистом\n\n"
     "Выберите раздел в меню ниже 👇"
 )
@@ -142,6 +148,21 @@ ADVISORY_LABELS = {
     "10_20": "10-20%",
     "gt20": "Более 20%",
 }
+VALUATION_SHARE_MAP = {
+    "40_60": 55.0,
+    "60_80": 70.0,
+    "gt80": 85.0,
+    "unknown_main": 60.0,
+}
+VALUATION_LOW_SHARE_OPTIONS = {"lt40", "unknown_small"}
+VALUATION_PROFITABILITY_MAP = {
+    "15_20": 17.5,
+    "20_25": 22.5,
+    "25_30": 27.5,
+    "30_35": 30.0,
+    "gt35": 35.0,
+    "unknown": 25.0,
+}
 WAIT_FILE_TEXT = (
     "Ожидаем ваш файл.\n\n"
     "Вы можете загрузить Excel сюда или нажать «Отправил по почте», если уже отправили на success@aivel.ai."
@@ -157,6 +178,8 @@ MISSING_PERSONAL_DATA_TEXT = (
 MEETING_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 DEFAULT_EXPRESS_ACCOUNTANTS = 15
 DEFAULT_EXPRESS_SALARY = 120000
+VALUATION_RUB_INPUT_THRESHOLD = 1000
+VALUATION_MULTIPLE = 2.5
 
 
 
@@ -180,6 +203,17 @@ def parse_positive_int(raw_value: str) -> int | None:
         return None
     value = int(normalized)
     return value if value > 0 else None
+
+
+def parse_float(raw_value: str) -> float | None:
+    normalized = raw_value.strip().replace(" ", "").replace(",", ".").replace("_", "")
+    if normalized.count(".") > 1:
+        return None
+    try:
+        value = float(normalized)
+    except ValueError:
+        return None
+    return value
 
 
 def format_mln_range(min_savings_rub: int, max_savings_rub: int) -> str:
@@ -289,6 +323,25 @@ async def send_simulate_mode_menu(target: Message | CallbackQuery, state: FSMCon
     )
 
 
+async def send_valuation_mode_menu(target: Message | CallbackQuery, state: FSMContext):
+    await state.clear()
+    await state.set_state(ValuationFlow.mode_select)
+
+    text = (
+        "Ваша фирма 2.0 — это не продажа бизнеса. Это апгрейд.\n"
+        "Мы покажем, как партнёрство с AIVEL может изменить экономику вашей фирмы: "
+        "больше прибыли, автоматизация рутины и капитал для роста.\n"
+        "Выберите, с чего начать:"
+    )
+
+    if isinstance(target, CallbackQuery):
+        await target.message.answer(text, reply_markup=valuation_mode_keyboard())
+        await target.answer()
+        return
+
+    await target.answer(text, reply_markup=valuation_mode_keyboard())
+
+
 async def ensure_simulate_consent(callback: CallbackQuery, state: FSMContext) -> bool:
     user_id = await get_db_user_id(callback)
     already_accepted = await get_tool_consent(user_id, "simulate")
@@ -376,18 +429,16 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
             await send_simulate_mode_menu(message_or_callback, state)
             return
 
+        if tool_name == "valuation":
+            await send_valuation_mode_menu(message_or_callback, state)
+            return
+
         if isinstance(message_or_callback, CallbackQuery):
-            await message_or_callback.message.answer(
-                TOOL_PLACEHOLDER_TEXT,
-                reply_markup=persistent_main_keyboard(),
-            )
+            await message_or_callback.message.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
             await message_or_callback.answer()
             return
 
-        await message_or_callback.answer(
-            TOOL_PLACEHOLDER_TEXT,
-            reply_markup=persistent_main_keyboard(),
-        )
+        await message_or_callback.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
         return
 
     await state.clear()
@@ -441,7 +492,7 @@ async def open_simulate_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "simulate")
 
 
-@router.message(StateFilter(None), F.text == "Оценка стоимости фирмы (скоро)")
+@router.message(StateFilter(None), F.text.in_({"Сделка и рост", "Оценка стоимости фирмы (скоро)"}))
 async def open_valuation_from_keyboard(message: Message, state: FSMContext):
     await open_tool_flow(message, state, "valuation")
 
@@ -511,6 +562,10 @@ async def submit_consent(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(CONSENT_ACCEPTED_TEXT)
     if tool_name == "simulate":
         await send_simulate_mode_menu(callback, state)
+        return
+
+    if tool_name == "valuation":
+        await send_valuation_mode_menu(callback, state)
         return
 
     await state.clear()
@@ -808,6 +863,193 @@ async def simulate_mode_pro(callback: CallbackQuery, state: FSMContext):
     await add_event(user_id, "simulate_mode_selected", "pro")
 
     await send_excel_and_wait_for_user(callback, state)
+
+
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:back")
+async def valuation_back_to_main(callback: CallbackQuery, state: FSMContext):
+    await return_to_base_state(callback.message, state, THANKS_TOOL_TEXT)
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:mode:express")
+async def valuation_mode_express(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        "⚡ <b>Экспресс-оценка</b>\n\n"
+        "Ответьте на 3 вопроса — и мы мгновенно рассчитаем:\n"
+        "• стоимость вашей фирмы\n"
+        "• сумму, которую вы получите при сделке\n"
+        "• ваш доход за 5 лет с партнёрством и без",
+        parse_mode="HTML",
+        reply_markup=valuation_intro_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:mode:excel")
+async def valuation_mode_excel(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "Логику для «Заполнить в Excel для менеджера» добавим в следующей части ТЗ."
+    )
+
+
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:mode:about")
+async def valuation_mode_about(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "Блок «Сначала расскажите подробнее» будет добавлен в следующей части ТЗ."
+    )
+
+
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:express:start")
+async def valuation_express_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ValuationFlow.express_revenue)
+    await callback.message.answer(
+        "<b>Q1: Какая годовая выручка вашей фирмы? (млн руб.)</b>\n\n"
+        "Просто напишите число, например: 30",
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.message(ValuationFlow.express_revenue, F.text)
+async def valuation_express_revenue(message: Message, state: FSMContext):
+    revenue = parse_float(message.text)
+    if revenue is None:
+        await message.answer("Пожалуйста, введите число в миллионах рублей. Например: 30")
+        return
+    if revenue <= 0:
+        await message.answer("Введите положительное число больше нуля.")
+        return
+    if revenue > VALUATION_RUB_INPUT_THRESHOLD:
+        await message.answer(
+            "Похоже, вы ввели сумму в рублях. Введите в миллионах — например, 30 означает 30 млн руб."
+        )
+        return
+
+    await state.update_data(valuation_revenue_mln=revenue)
+    await state.set_state(ValuationFlow.express_share)
+    await message.answer(
+        "<b>Q2: Какая доля выручки приходится на базовый бухгалтерский аутсорсинг? (%)</b>\n\n"
+        "Это обработка первичных документов, сверки и банк-клиент. Без учёта аудита, консалтинга и прочих услуг.",
+        parse_mode="HTML",
+        reply_markup=valuation_share_keyboard(),
+    )
+
+
+@router.callback_query(ValuationFlow.express_share, F.data.startswith("valuation:share:"))
+async def valuation_express_share(callback: CallbackQuery, state: FSMContext):
+    option = callback.data.removeprefix("valuation:share:")
+    if option in VALUATION_LOW_SHARE_OPTIONS:
+        await callback.message.answer(
+            "Спасибо за ответ!\n"
+            "Сейчас мы фокусируемся на фирмах, где базовая бухгалтерия составляет основную часть бизнеса "
+            "(от 50% выручки).\n"
+            "Но если вы рассматриваете выделение бухгалтерского направления в отдельную структуру — "
+            "мы можем обсудить такой вариант с нашим менеджером.\n\n"
+            "Это может быть интересно, если:\n"
+            "• У вас есть устойчивый поток клиентов на базовую бухгалтерию\n"
+            "• Вы хотите сфокусироваться на консалтинге / аудите\n"
+            "• Бухгалтерское направление можно выделить без потери клиентов",
+            reply_markup=valuation_low_share_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    share = VALUATION_SHARE_MAP.get(option)
+    if share is None:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    await state.update_data(valuation_share_percent=share)
+    await state.set_state(ValuationFlow.express_profitability)
+    await callback.message.answer(
+        "<b>Q3: Какая коммерческая маржа (прибыльность) на базовых бухгалтерских услугах (P)?</b>\n\n"
+        "Это прибыль от базовой бухгалтерии ÷ выручка от базовой бухгалтерии.",
+        parse_mode="HTML",
+        reply_markup=valuation_profitability_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.express_share, F.data == "valuation:low_share:not_now")
+async def valuation_low_share_not_now(callback: CallbackQuery, state: FSMContext):
+    await return_to_base_state(
+        callback.message,
+        state,
+        "Понял! Если что-то изменится — мы всегда здесь. "
+        "Вы по-прежнему будете получать новости и обновления продуктов. "
+        "Удачи в развитии бизнеса! 🤝",
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.express_profitability, F.data.startswith("valuation:profit:"))
+async def valuation_express_profitability(callback: CallbackQuery, state: FSMContext):
+    option = callback.data.removeprefix("valuation:profit:")
+    profitability = VALUATION_PROFITABILITY_MAP.get(option)
+    if profitability is None:
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+
+    data = await state.get_data()
+    revenue_mln = float(data["valuation_revenue_mln"])
+    profit_mln = revenue_mln * (profitability / 100)
+    valuation_mln = round(profit_mln * VALUATION_MULTIPLE, 1)
+    profit_mln_rounded = round(profit_mln, 1)
+
+    await state.update_data(
+        valuation_profitability_percent=profitability,
+        valuation_profit_mln=profit_mln_rounded,
+        valuation_result_mln=valuation_mln,
+    )
+
+    user_id = await get_db_user_id(callback)
+    await add_event(
+        user_id,
+        "valuation_express_completed",
+        (
+            f"revenue_mln={revenue_mln};share={data.get('valuation_share_percent')};"
+            f"profitability={profitability};profit_mln={profit_mln_rounded};valuation_mln={valuation_mln}"
+        ),
+    )
+
+    await state.set_state(ValuationFlow.express_continue)
+    await callback.message.answer("⏳ Оцениваем вашу фирму...")
+    await callback.message.answer(
+        "Оценка стоимости вашей фирмы\n"
+        f"{profit_mln_rounded:.1f} × {VALUATION_MULTIPLE:.1f} = {valuation_mln:.1f} млн руб.\n"
+        "— стандарт для бухгалтерских практик\n\n"
+        "Есть несколько важных нюансов, которые нужно уточнить. "
+        "Вы согласны ответить на ещё несколько вопросов, чтобы быть точнее и учесть важные моменты?",
+        reply_markup=valuation_continue_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.express_continue, F.data == "valuation:continue:yes")
+async def valuation_continue_yes(callback: CallbackQuery, state: FSMContext):
+    await return_to_base_state(
+        callback.message,
+        state,
+        "Отлично! Переходим к следующему этапу «Точная оценка» в следующей части ТЗ.",
+    )
+    await callback.answer()
+
+
+@router.callback_query(ValuationFlow.express_continue, F.data == "valuation:continue:no")
+async def valuation_continue_no(callback: CallbackQuery, state: FSMContext):
+    await return_to_base_state(
+        callback.message,
+        state,
+        "Спасибо, что нашли время пройти нашу экспресс-оценку компании.\n"
+        "Каждый день мы делимся в этом чате материалами о нашей работе и достижениях. "
+        "Если вы хотите назначить звонок, чтобы обсудить возможную сделку, "
+        "нажмите «Забронировать встречу» в меню. "
+        "В противном случае будем рады встретиться с вами на одном из наших ближайших мероприятий "
+        "— список доступен в меню.",
+    )
+    await callback.answer()
 
 
 @router.message(SimulateFlow.express_accountants, F.text)

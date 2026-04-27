@@ -26,7 +26,7 @@ def persistent_main_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="Меню бота")],
             [KeyboardButton(text="Калькулятор экономии")],
-            [KeyboardButton(text="Оценка стоимости фирмы (скоро)")],
+            [KeyboardButton(text="Сделка и рост")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -310,6 +310,80 @@ def meeting_waiting_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Назад", callback_data="meeting:back")],
+        ]
+    )
+
+
+def valuation_mode_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⚡ Быстрая оценка за 2 минуты", callback_data="valuation:mode:express")],
+            [InlineKeyboardButton(text="⬇️ Заполнить в Excel для менеджера", callback_data="valuation:mode:excel")],
+            [InlineKeyboardButton(text="📖 Сначала расскажите подробнее", callback_data="valuation:mode:about")],
+            [InlineKeyboardButton(text="↩️ Назад", callback_data="valuation:back")],
+        ]
+    )
+
+
+def valuation_intro_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Поехали⚡", callback_data="valuation:express:start")],
+            [InlineKeyboardButton(text="↩️ Назад", callback_data="valuation:back")],
+        ]
+    )
+
+
+def valuation_share_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="<40%", callback_data="valuation:share:lt40")],
+            [InlineKeyboardButton(text="40-60%", callback_data="valuation:share:40_60")],
+            [InlineKeyboardButton(text="60-80%", callback_data="valuation:share:60_80")],
+            [InlineKeyboardButton(text=">80%", callback_data="valuation:share:gt80")],
+            [
+                InlineKeyboardButton(
+                    text="Я не знаю, но это основная часть нашего бизнеса",
+                    callback_data="valuation:share:unknown_main",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Я не знаю, но это незначительная часть нашего бизнеса",
+                    callback_data="valuation:share:unknown_small",
+                )
+            ],
+        ]
+    )
+
+
+def valuation_low_share_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📞 Обсудить выделение на звонке", url=_safe_calendly_link())],
+            [InlineKeyboardButton(text="👋 Спасибо, не сейчас", callback_data="valuation:low_share:not_now")],
+        ]
+    )
+
+
+def valuation_profitability_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="15–20%", callback_data="valuation:profit:15_20")],
+            [InlineKeyboardButton(text="20–25%", callback_data="valuation:profit:20_25")],
+            [InlineKeyboardButton(text="25–30%", callback_data="valuation:profit:25_30")],
+            [InlineKeyboardButton(text="30–35%", callback_data="valuation:profit:30_35")],
+            [InlineKeyboardButton(text="Больше 35%", callback_data="valuation:profit:gt35")],
+            [InlineKeyboardButton(text="Я не знаю", callback_data="valuation:profit:unknown")],
+        ]
+    )
+
+
+def valuation_continue_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Да", callback_data="valuation:continue:yes")],
+            [InlineKeyboardButton(text="Нет", callback_data="valuation:continue:no")],
         ]
     )
 
