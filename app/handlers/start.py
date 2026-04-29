@@ -686,6 +686,12 @@ async def open_valuation_from_menu(callback: CallbackQuery, state: FSMContext):
     await open_tool_flow(callback, state, "valuation")
 
 
+@router.callback_query(F.data == "valuation:menu:faq")
+async def open_valuation_faq_from_main_menu(callback: CallbackQuery):
+    await callback.answer()
+    await send_valuation_faq_topics(callback.message)
+
+
 @router.callback_query(ToolConsentFlow.waiting, F.data == "consent:back")
 async def consent_back(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()

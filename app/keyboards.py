@@ -39,6 +39,7 @@ def menu_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="📅 Записаться на встречу", callback_data="stub:book_meeting")],
             [InlineKeyboardButton(text="🎤 Встретиться на мероприятиях", callback_data="stub:events")],
+            [InlineKeyboardButton(text="❓ Часто задаваемые вопросы о сделке", callback_data="valuation:menu:faq")],
             [InlineKeyboardButton(text="🧩 Продукты и услуги (скоро)", callback_data="stub:products")],
             [InlineKeyboardButton(text="🎬 Видео и кейсы (скоро)", callback_data="stub:videos")],
         ]
