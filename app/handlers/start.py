@@ -2116,7 +2116,7 @@ async def simulate_precise_margin_skip_callback(callback: CallbackQuery, state: 
     user_id = (await state.get_data()).get("db_user_id")
     if user_id:
         await save_funnel_fields(int(user_id), margin_percent=0)
-    await finalize_precise_assessment(callback.message, state)
+    await finalize_precise_assessment(callback, state)
     await callback.answer()
 
 
