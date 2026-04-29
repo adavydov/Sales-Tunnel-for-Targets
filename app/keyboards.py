@@ -319,7 +319,7 @@ def valuation_mode_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="⚡ Быстрая оценка за 2 минуты", callback_data="valuation:mode:express")],
             [InlineKeyboardButton(text="⬇️ Заполнить в Excel для менеджера", callback_data="valuation:mode:excel")],
-            [InlineKeyboardButton(text="📖 Сначала расскажите подробнее", callback_data="valuation:mode:about")],
+            [InlineKeyboardButton(text="❓ Часто задаваемые вопросы о сделке", callback_data="valuation:mode:faq")],
             [InlineKeyboardButton(text="↩️ Назад", callback_data="valuation:back")],
         ]
     )
@@ -517,7 +517,7 @@ def valuation_faq_changes_keyboard() -> InlineKeyboardMarkup:
 def valuation_faq_legal_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Как юридически оформлена сделка?", callback_data="valuation:faq:q:legal_structure")],
+            [InlineKeyboardButton(text="Как юридически оформлена сделка: документы, права и защита?", callback_data="valuation:faq:q:legal_structure")],
             [InlineKeyboardButton(text="А если я захочу выйти?", callback_data="valuation:faq:q:legal_exit")],
             [InlineKeyboardButton(text="↩️ К темам", callback_data="valuation:faq:topics")],
         ]

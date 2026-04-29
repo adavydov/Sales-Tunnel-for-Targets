@@ -1076,14 +1076,12 @@ async def valuation_mode_excel(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(VALUATION_EXCEL_TEXT, reply_markup=valuation_excel_offer_keyboard())
 
 
-@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:mode:about")
-async def valuation_mode_about(callback: CallbackQuery):
+@router.callback_query(ValuationFlow.mode_select, F.data == "valuation:mode:faq")
+async def valuation_mode_faq(callback: CallbackQuery):
     user_id = await get_db_user_id(callback)
     cancel_valuation_idle_task(user_id)
     await callback.answer()
-    await callback.message.answer(
-        "Блок «Сначала расскажите подробнее» будет добавлен в следующей части ТЗ."
-    )
+    await send_valuation_faq_topics(callback.message)
 
 
 @router.callback_query(ValuationFlow.mode_select, F.data == "valuation:express:start")
@@ -1117,6 +1115,7 @@ async def valuation_express_revenue(message: Message, state: FSMContext):
         return
 
     await state.update_data(valuation_revenue_mln=revenue)
+    await save_funnel_fields(user_id, valuation_revenue_mln=revenue)
     await state.set_state(ValuationFlow.express_share)
     await message.answer(
         "<b>Q2: Какая доля выручки приходится на базовый бухгалтерский аутсорсинг? (%)</b>\n\n"
@@ -1153,6 +1152,7 @@ async def valuation_express_share(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.update_data(valuation_share_percent=share)
+    await save_funnel_fields(user_id, valuation_share_percent=share)
     await state.set_state(ValuationFlow.express_profitability)
     await callback.message.answer(
         "<b>Q3: Какая коммерческая маржа (прибыльность) на базовых бухгалтерских услугах (P)?</b>\n\n"
@@ -1194,6 +1194,12 @@ async def valuation_express_profitability(callback: CallbackQuery, state: FSMCon
     profit_mln_rounded = round(profit_mln, 1)
 
     await state.update_data(
+        valuation_profitability_percent=profitability,
+        valuation_profit_mln=profit_mln_rounded,
+        valuation_result_mln=valuation_mln,
+    )
+    await save_funnel_fields(
+        user_id,
         valuation_profitability_percent=profitability,
         valuation_profit_mln=profit_mln_rounded,
         valuation_result_mln=valuation_mln,
@@ -1266,6 +1272,7 @@ async def valuation_precise_q4_clients_total(message: Message, state: FSMContext
         return
 
     await state.update_data(valuation_c1=value)
+    await save_funnel_fields(user_id, valuation_c1=value)
     await state.set_state(ValuationFlow.precise_clients_key)
     await message.answer(
         "<b>Q5: Сколько клиентов приносят основную часть вашей выручки от базовой бухгалтерии?</b>\n\n"
@@ -1294,6 +1301,7 @@ async def valuation_precise_q5_key_clients(message: Message, state: FSMContext):
         return
 
     await state.update_data(valuation_c2=key_clients)
+    await save_funnel_fields(user_id, valuation_c2=key_clients)
     await state.set_state(ValuationFlow.precise_top5_share)
     await message.answer(
         "<b>Q6: Какую долю выручки от базовой бухгалтерии приносят ваши 5 крупнейших клиентов?</b>",
@@ -1312,6 +1320,7 @@ async def valuation_precise_q6_top5_share(callback: CallbackQuery, state: FSMCon
         return
 
     await state.update_data(valuation_c3=option)
+    await save_funnel_fields(user_id, valuation_c3=option)
     await state.set_state(ValuationFlow.precise_headcount)
     await callback.message.answer(
         "<b>Q7: Сколько бухгалтеров занято на базовых операциях?</b>\n\n"
@@ -1332,6 +1341,7 @@ async def valuation_precise_q7_headcount(message: Message, state: FSMContext):
         return
 
     await state.update_data(valuation_h=headcount)
+    await save_funnel_fields(user_id, valuation_h=headcount)
     await state.set_state(ValuationFlow.precise_automation_level)
     await message.answer(
         "<b>Q8: Используете ли вы инструменты автоматизации в бухгалтерии?</b>\n\n"
@@ -1351,6 +1361,7 @@ async def valuation_precise_q8_automation_level(callback: CallbackQuery, state: 
         return
 
     await state.update_data(valuation_q8_level=option)
+    await save_funnel_fields(user_id, valuation_q8_level=option)
     if option != "advanced":
         await valuation_send_precise_result(callback.message, state)
         await callback.answer()
@@ -1384,6 +1395,7 @@ async def valuation_q8_auto_toggle(callback: CallbackQuery, state: FSMContext):
         selected.add(option)
 
     await state.update_data(valuation_auto_tools=sorted(selected))
+    await save_funnel_fields(user_id, valuation_auto_tools="|".join(sorted(selected)))
     await callback.message.edit_reply_markup(reply_markup=valuation_automation_tools_keyboard(selected))
     await callback.answer()
 
@@ -1409,6 +1421,7 @@ async def valuation_q8_auto_other_text(message: Message, state: FSMContext):
     custom = data.get("valuation_auto_other", [])
     custom.append(raw)
     await state.update_data(valuation_auto_other=custom)
+    await save_funnel_fields(user_id, valuation_auto_other="\n".join(custom))
     await message.answer("Добавили. Если нужно, отправьте ещё вариант или нажмите «✅ Готово».")
 
 
@@ -1461,6 +1474,7 @@ async def valuation_send_precise_result(message: Message, state: FSMContext):
     )
 
     await state.update_data(valuation_rfcomp=rf_comp, valuation_new_result_mln=new_valuation)
+    await save_funnel_fields(user_id, valuation_rfcomp=rf_comp, valuation_new_result_mln=new_valuation)
     await state.set_state(ValuationFlow.precise_post_result)
     loading_message = await message.answer("⏳ Оцениваем вашу фирму...")
     await delete_message_safe(loading_message)
