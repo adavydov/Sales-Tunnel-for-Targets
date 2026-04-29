@@ -644,7 +644,7 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     await state.clear()
     await add_event(user_id, "start")
     await send_onboarding_complete(message)
@@ -1461,7 +1461,7 @@ async def valuation_send_precise_result(target: Message | CallbackQuery, state: 
             "Высокая зависимость от нескольких клиентов — это главный риск. Мы обсудим план диверсификации на звонке с менеджером."
         )
 
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     await add_event(
         user_id,
         "valuation_precise_completed",
