@@ -1431,6 +1431,7 @@ async def valuation_q8_auto_done(callback: CallbackQuery, state: FSMContext):
 
 
 async def valuation_send_precise_result(target: Message | CallbackQuery, state: FSMContext):
+    message = target.message if isinstance(target, CallbackQuery) else target
     data = await state.get_data()
     c1 = int(data["valuation_c1"])
     c2 = int(data["valuation_c2"])
@@ -1473,7 +1474,6 @@ async def valuation_send_precise_result(target: Message | CallbackQuery, state: 
     await state.update_data(valuation_rfcomp=rf_comp, valuation_new_result_mln=new_valuation)
     await save_funnel_fields(user_id, valuation_rfcomp=rf_comp, valuation_new_result_mln=new_valuation)
     await state.set_state(ValuationFlow.precise_post_result)
-    message = target.message if isinstance(target, CallbackQuery) else target
     loading_message = await message.answer("⏳ Оцениваем вашу фирму...")
     await delete_message_safe(loading_message)
     await message.answer(
