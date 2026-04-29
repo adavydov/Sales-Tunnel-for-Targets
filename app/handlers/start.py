@@ -1104,7 +1104,7 @@ async def valuation_express_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ValuationFlow.express_revenue, F.text)
 async def valuation_express_revenue(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     cancel_valuation_idle_task(user_id)
     revenue = parse_float(message.text)
     if revenue is None:
@@ -1269,7 +1269,7 @@ async def valuation_continue_no(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ValuationFlow.precise_clients_total, F.text)
 async def valuation_precise_q4_clients_total(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     cancel_valuation_idle_task(user_id)
     value = parse_positive_int(message.text.strip())
     if value is None:
@@ -1289,7 +1289,7 @@ async def valuation_precise_q4_clients_total(message: Message, state: FSMContext
 
 @router.message(ValuationFlow.precise_clients_key, F.text)
 async def valuation_precise_q5_key_clients(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     cancel_valuation_idle_task(user_id)
     key_clients = parse_positive_int(message.text.strip())
     if key_clients is None:
@@ -1338,7 +1338,7 @@ async def valuation_precise_q6_top5_share(callback: CallbackQuery, state: FSMCon
 
 @router.message(ValuationFlow.precise_headcount, F.text)
 async def valuation_precise_q7_headcount(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     cancel_valuation_idle_task(user_id)
     headcount = parse_positive_int(message.text.strip())
     if headcount is None:
@@ -1415,7 +1415,7 @@ async def valuation_q8_auto_other_hint(callback: CallbackQuery):
 
 @router.message(ValuationFlow.precise_automation_tools, F.text)
 async def valuation_q8_auto_other_text(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     cancel_valuation_idle_task(user_id)
     raw = message.text.strip()
     if not raw:
@@ -2165,7 +2165,7 @@ async def finalize_precise_assessment(target: Message | CallbackQuery, state: FS
         f"<i>Диапазон точной экономии: {precise_range}</i>"
     )
 
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     await save_funnel_fields(
         user_id,
         precise_assessment=precise_range,
