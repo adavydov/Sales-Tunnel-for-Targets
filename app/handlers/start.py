@@ -68,6 +68,8 @@ from app.scoring import (
 from app.states import MeetingBookingFlow, SimulateFlow, ToolConsentFlow, ValuationFlow
 
 router = Router()
+router.message.filter(F.from_user.is_bot == False)
+router.callback_query.filter(F.from_user.is_bot == False)
 logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -212,6 +214,8 @@ VALUATION_ROLES_IMAGE_URL = "https://disk.yandex.com/i/bxE4nm-98rX3aA"
 
 async def get_db_user_id(message_or_callback: Message | CallbackQuery) -> int:
     tg_user = message_or_callback.from_user
+    if tg_user is None or tg_user.is_bot:
+        raise ValueError("Bot-originated update cannot be mapped to app user")
     return await upsert_user(
         telegram_id=tg_user.id,
         username=tg_user.username,
@@ -630,7 +634,7 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
             reply_markup=tool_consent_keyboard(False, False, tool_name),
         )
         await message_or_callback.message.answer(
-            " ",
+            "✅",
             reply_markup=ReplyKeyboardRemove(),
         )
         await message_or_callback.answer()
@@ -641,7 +645,7 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
         reply_markup=tool_consent_keyboard(False, False, tool_name),
     )
     await message_or_callback.answer(
-        " ",
+        "✅",
         reply_markup=ReplyKeyboardRemove(),
     )
 
