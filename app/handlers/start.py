@@ -633,20 +633,12 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
             CONSENT_TEXT,
             reply_markup=tool_consent_keyboard(False, False, tool_name),
         )
-        await message_or_callback.message.answer(
-            "✅",
-            reply_markup=ReplyKeyboardRemove(),
-        )
         await message_or_callback.answer()
         return
 
     await message_or_callback.answer(
         CONSENT_TEXT,
         reply_markup=tool_consent_keyboard(False, False, tool_name),
-    )
-    await message_or_callback.answer(
-        "✅",
-        reply_markup=ReplyKeyboardRemove(),
     )
 
 
@@ -660,7 +652,7 @@ async def cmd_start(message: Message, state: FSMContext):
 
 @router.message(StateFilter(None), F.text == "Меню бота")
 async def open_menu(message: Message):
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     await add_event(user_id, "menu_opened")
     await message.answer(MENU_TEXT, reply_markup=menu_keyboard())
 
@@ -853,7 +845,7 @@ async def meeting_email_step(message: Message, state: FSMContext):
 
     now = datetime.now(ZoneInfo(MEETING_TIMEZONE))
     await state.update_data(meeting_email=email)
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     await save_funnel_fields(user_id, contact_email=email)
     await state.set_state(MeetingBookingFlow.waiting_date)
     await message.answer(
@@ -1468,7 +1460,7 @@ async def valuation_send_precise_result(target: Message | CallbackQuery, state: 
             "Высокая зависимость от нескольких клиентов — это главный риск. Мы обсудим план диверсификации на звонке с менеджером."
         )
 
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     await add_event(
         user_id,
         "valuation_precise_completed",
@@ -2165,7 +2157,7 @@ async def finalize_precise_assessment(target: Message | CallbackQuery, state: FS
         f"<i>Диапазон точной экономии: {precise_range}</i>"
     )
 
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     await save_funnel_fields(
         user_id,
         precise_assessment=precise_range,
@@ -2270,7 +2262,7 @@ async def simulate_wait_excel_upload(message: Message, state: FSMContext):
         await message.answer("Похоже, это не Excel-файл. Пожалуйста, отправьте файл в формате .xlsx/.xls/.xlsm.")
         return
 
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     uploaded_file_link = f"telegram_file_id:{document.file_id}"
     try:
         telegram_file = await message.bot.get_file(document.file_id)
