@@ -37,6 +37,20 @@ ALLOWED_FUNNEL_FIELDS = {
     "mna_interest",
     "file_downloaded",
     "uploaded_file_link",
+    "valuation_revenue_mln",
+    "valuation_share_percent",
+    "valuation_profitability_percent",
+    "valuation_profit_mln",
+    "valuation_result_mln",
+    "valuation_c1",
+    "valuation_c2",
+    "valuation_c3",
+    "valuation_h",
+    "valuation_q8_level",
+    "valuation_auto_tools",
+    "valuation_auto_other",
+    "valuation_rfcomp",
+    "valuation_new_result_mln",
 }
 ALLOWED_STANDARDIZATION = {"high", "medium", "low"}
 ALLOWED_AUTOMATION = {"none", "partial", "systems"}
@@ -166,6 +180,20 @@ async def init_db():
                     mna_interest TEXT CHECK (mna_interest IN ('yes', 'no')),
                     file_downloaded BOOLEAN DEFAULT FALSE,
                     uploaded_file_link TEXT,
+                    valuation_revenue_mln DOUBLE PRECISION,
+                    valuation_share_percent DOUBLE PRECISION,
+                    valuation_profitability_percent DOUBLE PRECISION,
+                    valuation_profit_mln DOUBLE PRECISION,
+                    valuation_result_mln DOUBLE PRECISION,
+                    valuation_c1 INTEGER,
+                    valuation_c2 INTEGER,
+                    valuation_c3 TEXT,
+                    valuation_h INTEGER,
+                    valuation_q8_level TEXT,
+                    valuation_auto_tools TEXT,
+                    valuation_auto_other TEXT,
+                    valuation_rfcomp DOUBLE PRECISION,
+                    valuation_new_result_mln DOUBLE PRECISION,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -212,6 +240,20 @@ async def init_db():
             )
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS file_downloaded BOOLEAN DEFAULT FALSE;""")
             await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS uploaded_file_link TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_revenue_mln DOUBLE PRECISION;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_share_percent DOUBLE PRECISION;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_profitability_percent DOUBLE PRECISION;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_profit_mln DOUBLE PRECISION;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_result_mln DOUBLE PRECISION;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_c1 INTEGER;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_c2 INTEGER;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_c3 TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_h INTEGER;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_q8_level TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_auto_tools TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_auto_other TEXT;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_rfcomp DOUBLE PRECISION;""")
+            await cur.execute("""ALTER TABLE users ADD COLUMN IF NOT EXISTS valuation_new_result_mln DOUBLE PRECISION;""")
 
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_email;""")
             await cur.execute("""ALTER TABLE users DROP COLUMN IF EXISTS lead_telegram;""")
@@ -556,7 +598,21 @@ async def get_users_for_export():
                     growth_band,
                     mna_interest,
                     file_downloaded,
-                    uploaded_file_link
+                    uploaded_file_link,
+                    valuation_revenue_mln,
+                    valuation_share_percent,
+                    valuation_profitability_percent,
+                    valuation_profit_mln,
+                    valuation_result_mln,
+                    valuation_c1,
+                    valuation_c2,
+                    valuation_c3,
+                    valuation_h,
+                    valuation_q8_level,
+                    valuation_auto_tools,
+                    valuation_auto_other,
+                    valuation_rfcomp,
+                    valuation_new_result_mln
                 FROM users
                 ORDER BY id ASC;
             """)
