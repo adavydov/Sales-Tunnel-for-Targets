@@ -61,7 +61,29 @@ source .venv/bin/activate
 
 3. Установить зависимости:
 python3 -m pip install --upgrade pip
-python3 -m pip install aiogram python-dotenv "psycopg[binary]" APScheduler
+python3 -m pip install -r requirements.txt
+
+
+Если при установке видите ошибки вида `ProxyError ... 403 Forbidden` и `No matching distribution found`, проблема обычно не в команде, а в сетевом доступе pip к PyPI (прокси/фаервол).
+
+Проверьте текущие настройки pip и переменные прокси:
+```bash
+python3 -m pip config list
+env | grep -Ei 'http_proxy|https_proxy|no_proxy|PIP_INDEX_URL|PIP_EXTRA_INDEX_URL'
+```
+
+Если вы в корпоративной сети, используйте корректный зеркальный индекс (пример):
+```bash
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt \
+  --index-url https://pypi.org/simple
+```
+
+Если нужен корпоративный proxy, задайте его явно:
+```bash
+python3 -m pip install -r requirements.txt \
+  --proxy http://<user>:<pass>@<proxy-host>:<port>
+```
 
 4. Создать .env файл:
 BOT_TOKEN=<ваш_токен_бота>
@@ -115,3 +137,15 @@ python3 main.py
 - Расчёт fit/intent/status — scoring.py
 - Материалы — materials.py
 - Хранение и логирование — db.py
+
+## Railway: какая ветка деплоится
+
+Короткий ответ: **обычно да, Railway по умолчанию деплоит `main`** (если в сервисе выбрана GitHub-интеграция и ветка не менялась вручную).
+
+Важно: в Railway это настраивается в самом сервисе:
+- `Project` → нужный `Service` → `Settings` → `Source / Repository` → `Branch`.
+- Именно эта ветка является источником автодеплоя.
+
+Если у вас сейчас выбрана `main`, то в прод будет запускаться код именно из `main`.
+Если выбрана другая ветка (например, `develop`), деплоиться будет она.
+
