@@ -660,7 +660,7 @@ async def cmd_start(message: Message, state: FSMContext):
 
 @router.message(StateFilter(None), F.text == "Меню бота")
 async def open_menu(message: Message):
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     await add_event(user_id, "menu_opened")
     await message.answer(MENU_TEXT, reply_markup=menu_keyboard())
 
@@ -853,7 +853,7 @@ async def meeting_email_step(message: Message, state: FSMContext):
 
     now = datetime.now(ZoneInfo(MEETING_TIMEZONE))
     await state.update_data(meeting_email=email)
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     await save_funnel_fields(user_id, contact_email=email)
     await state.set_state(MeetingBookingFlow.waiting_date)
     await message.answer(
@@ -1104,7 +1104,7 @@ async def valuation_express_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ValuationFlow.express_revenue, F.text)
 async def valuation_express_revenue(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     cancel_valuation_idle_task(user_id)
     revenue = parse_float(message.text)
     if revenue is None:
@@ -1269,7 +1269,7 @@ async def valuation_continue_no(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ValuationFlow.precise_clients_total, F.text)
 async def valuation_precise_q4_clients_total(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     cancel_valuation_idle_task(user_id)
     value = parse_positive_int(message.text.strip())
     if value is None:
@@ -1289,7 +1289,7 @@ async def valuation_precise_q4_clients_total(message: Message, state: FSMContext
 
 @router.message(ValuationFlow.precise_clients_key, F.text)
 async def valuation_precise_q5_key_clients(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     cancel_valuation_idle_task(user_id)
     key_clients = parse_positive_int(message.text.strip())
     if key_clients is None:
@@ -1338,7 +1338,7 @@ async def valuation_precise_q6_top5_share(callback: CallbackQuery, state: FSMCon
 
 @router.message(ValuationFlow.precise_headcount, F.text)
 async def valuation_precise_q7_headcount(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     cancel_valuation_idle_task(user_id)
     headcount = parse_positive_int(message.text.strip())
     if headcount is None:
@@ -1368,7 +1368,7 @@ async def valuation_precise_q8_automation_level(callback: CallbackQuery, state: 
     await state.update_data(valuation_q8_level=option)
     await save_funnel_fields(user_id, valuation_q8_level=option)
     if option != "advanced":
-        await valuation_send_precise_result(callback.message, state)
+        await valuation_send_precise_result(callback, state)
         await callback.answer()
         return
 
@@ -1415,7 +1415,7 @@ async def valuation_q8_auto_other_hint(callback: CallbackQuery):
 
 @router.message(ValuationFlow.precise_automation_tools, F.text)
 async def valuation_q8_auto_other_text(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     cancel_valuation_idle_task(user_id)
     raw = message.text.strip()
     if not raw:
@@ -1434,11 +1434,11 @@ async def valuation_q8_auto_other_text(message: Message, state: FSMContext):
 async def valuation_q8_auto_done(callback: CallbackQuery, state: FSMContext):
     user_id = await get_db_user_id(callback)
     cancel_valuation_idle_task(user_id)
-    await valuation_send_precise_result(callback.message, state)
+    await valuation_send_precise_result(callback, state)
     await callback.answer()
 
 
-async def valuation_send_precise_result(message: Message, state: FSMContext):
+async def valuation_send_precise_result(target: Message | CallbackQuery, state: FSMContext):
     data = await state.get_data()
     c1 = int(data["valuation_c1"])
     c2 = int(data["valuation_c2"])
@@ -1468,7 +1468,7 @@ async def valuation_send_precise_result(message: Message, state: FSMContext):
             "Высокая зависимость от нескольких клиентов — это главный риск. Мы обсудим план диверсификации на звонке с менеджером."
         )
 
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     await add_event(
         user_id,
         "valuation_precise_completed",
@@ -1481,6 +1481,7 @@ async def valuation_send_precise_result(message: Message, state: FSMContext):
     await state.update_data(valuation_rfcomp=rf_comp, valuation_new_result_mln=new_valuation)
     await save_funnel_fields(user_id, valuation_rfcomp=rf_comp, valuation_new_result_mln=new_valuation)
     await state.set_state(ValuationFlow.precise_post_result)
+    message = target.message if isinstance(target, CallbackQuery) else target
     loading_message = await message.answer("⏳ Оцениваем вашу фирму...")
     await delete_message_safe(loading_message)
     await message.answer(
@@ -2269,7 +2270,7 @@ async def simulate_wait_excel_upload(message: Message, state: FSMContext):
         await message.answer("Похоже, это не Excel-файл. Пожалуйста, отправьте файл в формате .xlsx/.xls/.xlsm.")
         return
 
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     uploaded_file_link = f"telegram_file_id:{document.file_id}"
     try:
         telegram_file = await message.bot.get_file(document.file_id)
