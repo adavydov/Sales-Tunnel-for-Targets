@@ -313,6 +313,16 @@ async def sync_users_export():
         return
 
     try:
+        if EXPORT_SHEETS_SERVICE_ACCOUNT_EMAIL and not EXPORT_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY:
+            logger.warning(
+                "Service Account email is configured, but private key is empty. "
+                "Set EXPORT_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY."
+            )
+        if EXPORT_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY and not EXPORT_SHEETS_SERVICE_ACCOUNT_EMAIL:
+            logger.warning(
+                "Service Account private key is configured, but email is empty. "
+                "Set EXPORT_SHEETS_SERVICE_ACCOUNT_EMAIL."
+            )
         if EXPORT_SHEETS_SERVICE_ACCOUNT_EMAIL and EXPORT_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY:
             logger.info("Users export uses Service Account mode.")
         elif (
