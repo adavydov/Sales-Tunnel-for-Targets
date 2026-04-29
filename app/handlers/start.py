@@ -660,7 +660,7 @@ async def cmd_start(message: Message, state: FSMContext):
 
 @router.message(StateFilter(None), F.text == "Меню бота")
 async def open_menu(message: Message):
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     await add_event(user_id, "menu_opened")
     await message.answer(MENU_TEXT, reply_markup=menu_keyboard())
 
@@ -853,7 +853,7 @@ async def meeting_email_step(message: Message, state: FSMContext):
 
     now = datetime.now(ZoneInfo(MEETING_TIMEZONE))
     await state.update_data(meeting_email=email)
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     await save_funnel_fields(user_id, contact_email=email)
     await state.set_state(MeetingBookingFlow.waiting_date)
     await message.answer(
@@ -2270,7 +2270,7 @@ async def simulate_wait_excel_upload(message: Message, state: FSMContext):
         await message.answer("Похоже, это не Excel-файл. Пожалуйста, отправьте файл в формате .xlsx/.xls/.xlsm.")
         return
 
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     uploaded_file_link = f"telegram_file_id:{document.file_id}"
     try:
         telegram_file = await message.bot.get_file(document.file_id)
