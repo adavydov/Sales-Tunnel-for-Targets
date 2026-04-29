@@ -630,7 +630,7 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
             reply_markup=tool_consent_keyboard(False, False, tool_name),
         )
         await message_or_callback.message.answer(
-            " ",
+            "✅",
             reply_markup=ReplyKeyboardRemove(),
         )
         await message_or_callback.answer()
@@ -641,7 +641,7 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
         reply_markup=tool_consent_keyboard(False, False, tool_name),
     )
     await message_or_callback.answer(
-        " ",
+        "✅",
         reply_markup=ReplyKeyboardRemove(),
     )
 
