@@ -644,7 +644,7 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
-    user_id = await get_db_user_id(message)
+    user_id = await get_db_user_id(target)
     await state.clear()
     await add_event(user_id, "start")
     await send_onboarding_complete(message)
