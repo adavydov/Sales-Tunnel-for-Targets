@@ -61,6 +61,20 @@ EXPORT_COLUMNS = [
     "mna_interest",
     "file_downloaded",
     "uploaded_file_link",
+    "valuation_revenue_mln",
+    "valuation_share_percent",
+    "valuation_profitability_percent",
+    "valuation_profit_mln",
+    "valuation_result_mln",
+    "valuation_c1",
+    "valuation_c2",
+    "valuation_c3",
+    "valuation_h",
+    "valuation_q8_level",
+    "valuation_auto_tools",
+    "valuation_auto_other",
+    "valuation_rfcomp",
+    "valuation_new_result_mln",
 ]
 
 
