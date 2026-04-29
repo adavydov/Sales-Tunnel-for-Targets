@@ -525,6 +525,16 @@ def valuation_faq_legal_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def valuation_faq_question_numbers_keyboard(topic: str, total: int) -> InlineKeyboardMarkup:
+    rows = []
+    for idx in range(1, total + 1):
+        rows.append(
+            [InlineKeyboardButton(text=f"Вопрос {idx}", callback_data=f"valuation:faq:{topic}:q{idx}")]
+        )
+    rows.append([InlineKeyboardButton(text="↩️ К темам", callback_data="valuation:faq:topics")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def calendly_meeting_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

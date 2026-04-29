@@ -59,12 +59,7 @@ from app.keyboards import (
     valuation_excel_offer_keyboard,
     valuation_idle_followup_keyboard,
     valuation_faq_topics_keyboard,
-    valuation_faq_price_keyboard,
-    valuation_faq_roles_keyboard,
-    valuation_faq_process_keyboard,
-    valuation_faq_ai_keyboard,
-    valuation_faq_changes_keyboard,
-    valuation_faq_legal_keyboard,
+    valuation_faq_question_numbers_keyboard,
 )
 from app.scoring import (
     calculate_express_operation_savings,
@@ -1542,7 +1537,7 @@ async def valuation_idle_faq(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(ValuationFlow.precise_post_result, F.data == "valuation:faq:topics")
+@router.callback_query(F.data == "valuation:faq:topics")
 async def valuation_faq_topics(callback: CallbackQuery):
     user_id = await get_db_user_id(callback)
     cancel_valuation_idle_task(user_id)
@@ -1550,34 +1545,92 @@ async def valuation_faq_topics(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(ValuationFlow.precise_post_result, F.data.startswith("valuation:faq:topic:"))
+@router.callback_query(F.data.startswith("valuation:faq:topic:"))
 async def valuation_faq_topic_selected(callback: CallbackQuery):
     user_id = await get_db_user_id(callback)
     cancel_valuation_idle_task(user_id)
     topic = callback.data.removeprefix("valuation:faq:topic:")
     mapping = {
-        "price": ("Оценка и цена", valuation_faq_price_keyboard()),
-        "roles": ("Кто за что отвечает", valuation_faq_roles_keyboard()),
-        "process": ("Как проходит сделка", valuation_faq_process_keyboard()),
-        "ai": ("Внедрение ИИ", valuation_faq_ai_keyboard()),
-        "changes": ("Что меняется в фирме", valuation_faq_changes_keyboard()),
-        "legal": ("Юридические вопросы", valuation_faq_legal_keyboard()),
+        "price": (
+            "Оценка и цена",
+            [
+                ("price_calc", "Как оценивается моя фирма?"),
+                ("price_debt", "А если у меня долги?"),
+                ("price_25", "Сколько я получу за 25%?"),
+                ("price_cash", "Cash-In vs Cash-Out — что выгоднее?"),
+            ],
+        ),
+        "roles": (
+            "Кто за что отвечает",
+            [
+                ("roles_mgmt", "Что изменится в управлении?"),
+                ("roles_fire", "Могут ли меня уволить?"),
+            ],
+        ),
+        "process": (
+            "Как проходит сделка",
+            [
+                ("process_steps", "Шаги от знакомства до сделки"),
+                ("process_fast", "А можно быстрее?"),
+            ],
+        ),
+        "ai": (
+            "Внедрение ИИ",
+            [
+                ("ai_speed", "Как быстро заработает ИИ?"),
+                ("ai_cost", "Сколько стоит внедрение?"),
+                ("ai_scope", "Что автоматизируется?"),
+            ],
+        ),
+        "changes": (
+            "Что меняется в фирме",
+            [
+                ("changes_clients", "Что изменится для моих клиентов?"),
+                ("changes_team", "А что с моей командой?"),
+            ],
+        ),
+        "legal": (
+            "Юридические вопросы",
+            [
+                ("legal_structure", "Как юридически оформлена сделка?"),
+                ("legal_exit", "А если я захочу выйти?"),
+            ],
+        ),
     }
     selected = mapping.get(topic)
     if selected is None:
         await callback.answer("Неизвестная тема", show_alert=True)
         return
 
-    title, keyboard = selected
-    await callback.message.answer(f"Раздел: <b>{title}</b>\n\nВыберите вопрос:", parse_mode="HTML", reply_markup=keyboard)
+    title, questions = selected
+    questions_text = "\n".join([f"{idx}. {label}" for idx, (_, label) in enumerate(questions, start=1)])
+    await callback.message.answer(
+        f"Раздел: <b>{title}</b>\n\nВопросы:\n{questions_text}\n\nВыберите номер вопроса:",
+        parse_mode="HTML",
+        reply_markup=valuation_faq_question_numbers_keyboard(topic, len(questions)),
+    )
     await callback.answer()
 
 
-@router.callback_query(ValuationFlow.precise_post_result, F.data.startswith("valuation:faq:q:"))
+@router.callback_query(F.data.regexp(r"^valuation:faq:[a-z_]+:q[0-9]+$"))
 async def valuation_faq_question_selected(callback: CallbackQuery):
     user_id = await get_db_user_id(callback)
     cancel_valuation_idle_task(user_id)
-    question_id = callback.data.removeprefix("valuation:faq:q:")
+    _, _, topic, qnum_raw = callback.data.split(":")
+    qnum = int(qnum_raw.removeprefix("q"))
+    topic_question_map = {
+        "price": ["price_calc", "price_debt", "price_25", "price_cash"],
+        "roles": ["roles_mgmt", "roles_fire"],
+        "process": ["process_steps", "process_fast"],
+        "ai": ["ai_speed", "ai_cost", "ai_scope"],
+        "changes": ["changes_clients", "changes_team"],
+        "legal": ["legal_structure", "legal_exit"],
+    }
+    question_keys = topic_question_map.get(topic, [])
+    if qnum <= 0 or qnum > len(question_keys):
+        await callback.answer("Неизвестный вопрос", show_alert=True)
+        return
+    question_id = question_keys[qnum - 1]
     answers = valuation_faq_answers()
     text = answers.get(question_id)
     if text is None:
