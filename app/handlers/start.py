@@ -660,7 +660,7 @@ async def cmd_start(message: Message, state: FSMContext):
 
 @router.message(StateFilter(None), F.text == "Меню бота")
 async def open_menu(message: Message):
-    user_id = await get_db_user_id(target)
+    user_id = await get_db_user_id(message)
     await add_event(user_id, "menu_opened")
     await message.answer(MENU_TEXT, reply_markup=menu_keyboard())
 
