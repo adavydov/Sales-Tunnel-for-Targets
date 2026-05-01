@@ -21,7 +21,7 @@ from app.calendly import (
 )
 from app.config import BOT_TOKEN, MEETING_TIMEZONE
 from app.config import GOOGLE_SHEETS_API_KEY, GOOGLE_SHEETS_RANGE, GOOGLE_SHEETS_SPREADSHEET_ID
-from app.db import add_event, get_tool_consent, get_user_personal_data, save_funnel_fields, save_profile_field, upsert_user
+from app.db import add_event, get_user_personal_data, save_funnel_fields, save_profile_field, upsert_user
 from app.events import EventsConfigError, EventsRequestError, fetch_events, format_events_message
 from app.keyboards import (
     meeting_calendar_keyboard,
@@ -46,7 +46,6 @@ from app.keyboards import (
     simulate_precise_skip_keyboard,
     simulate_results_keyboard,
     simulate_skip_question_keyboard,
-    tool_consent_keyboard,
     valuation_continue_keyboard,
     valuation_intro_keyboard,
     valuation_low_share_keyboard,
@@ -65,7 +64,7 @@ from app.scoring import (
     calculate_express_operation_savings,
     calculate_precise_savings_from_express,
 )
-from app.states import MeetingBookingFlow, SimulateFlow, ToolConsentFlow, ValuationFlow
+from app.states import MeetingBookingFlow, SimulateFlow, ValuationFlow
 
 router = Router()
 router.message.filter(F.from_user.is_bot == False)
@@ -91,18 +90,6 @@ TOOL_PLACEHOLDER_TEXT = (
     "Инструмент пока в режиме заглушки."
     " На следующем шаге здесь будет полноценная интерактивная симуляция."
 )
-CONSENT_ACCEPTED_TEXT = (
-    "Спасибо! Соглашения приняты ✅\n"
-    "Теперь вам доступны все возможности этого бота"
-)
-
-CONSENT_TEXT = (
-    "Чтобы воспользоваться этим инструментом, подтвердите ознакомление с условиями:\n\n"
-    "1. NDA from AIVEL side for user's confidential data input.\n"
-    "2. Acceptance of terms including personal data privacy policy, "
-    "acceptance for receive marketing communication."
-)
-
 MENU_TEXT = "Меню бота:"
 BOOK_MEETING_TEXT = "Давайте запишем вас на встречу в Calendly."
 SIMULATE_MODE_TEXT = (
@@ -521,13 +508,7 @@ async def send_valuation_mode_menu(target: Message | CallbackQuery, state: FSMCo
 
 
 async def ensure_simulate_consent(callback: CallbackQuery, state: FSMContext) -> bool:
-    user_id = await get_db_user_id(callback)
-    already_accepted = await get_tool_consent(user_id, "simulate")
-    if already_accepted:
-        return True
-
-    await open_tool_flow(callback, state, "simulate")
-    return False
+    return True
 
 
 async def return_to_base_state(message: Message, state: FSMContext, text: str):
@@ -601,45 +582,20 @@ async def open_tool_flow(message_or_callback: Message | CallbackQuery, state: FS
     user_id = await get_db_user_id(message_or_callback)
     await add_event(user_id, "tool_open_requested", tool_name)
 
-    already_accepted = await get_tool_consent(user_id, "simulate") or await get_tool_consent(user_id, "valuation")
-    if already_accepted:
-        if tool_name == "simulate":
-            await send_simulate_mode_menu(message_or_callback, state)
-            return
-
-        if tool_name == "valuation":
-            await send_valuation_mode_menu(message_or_callback, state)
-            return
-
-        if isinstance(message_or_callback, CallbackQuery):
-            await message_or_callback.message.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
-            await message_or_callback.answer()
-            return
-
-        await message_or_callback.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
+    if tool_name == "simulate":
+        await send_simulate_mode_menu(message_or_callback, state)
         return
 
-    await state.clear()
-    await state.update_data(
-        db_user_id=user_id,
-        tool_name=tool_name,
-        consent_nda=False,
-        consent_terms=False,
-    )
-    await state.set_state(ToolConsentFlow.waiting)
+    if tool_name == "valuation":
+        await send_valuation_mode_menu(message_or_callback, state)
+        return
 
     if isinstance(message_or_callback, CallbackQuery):
-        await message_or_callback.message.answer(
-            CONSENT_TEXT,
-            reply_markup=tool_consent_keyboard(False, False, tool_name),
-        )
+        await message_or_callback.message.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
         await message_or_callback.answer()
         return
 
-    await message_or_callback.answer(
-        CONSENT_TEXT,
-        reply_markup=tool_consent_keyboard(False, False, tool_name),
-    )
+    await message_or_callback.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
 
 
 @router.message(CommandStart())
@@ -681,72 +637,6 @@ async def open_valuation_from_menu(callback: CallbackQuery, state: FSMContext):
 async def open_valuation_faq_from_main_menu(callback: CallbackQuery):
     await callback.answer()
     await send_valuation_faq_topics(callback.message)
-
-
-@router.callback_query(ToolConsentFlow.waiting, F.data == "consent:back")
-async def consent_back(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-    tool_name = data.get("tool_name", "unknown")
-
-    await add_event(user_id, "tool_consent_back", tool_name)
-    await state.clear()
-    await callback.message.delete()
-    await callback.answer()
-
-
-@router.callback_query(ToolConsentFlow.waiting, F.data.startswith("consent:toggle:"))
-async def toggle_consent(callback: CallbackQuery, state: FSMContext):
-    key = callback.data.split(":")[-1]
-    data = await state.get_data()
-
-    nda_checked = data.get("consent_nda", False)
-    terms_checked = data.get("consent_terms", False)
-    tool_name = data.get("tool_name", "simulate")
-
-    if key == "nda":
-        nda_checked = not nda_checked
-    elif key == "terms":
-        terms_checked = not terms_checked
-
-    await state.update_data(consent_nda=nda_checked, consent_terms=terms_checked)
-
-    await callback.message.edit_reply_markup(
-        reply_markup=tool_consent_keyboard(nda_checked, terms_checked, tool_name)
-    )
-    await callback.answer()
-
-
-@router.callback_query(ToolConsentFlow.waiting, F.data.startswith("consent:submit:"))
-async def submit_consent(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    user_id = data["db_user_id"]
-    tool_name = data.get("tool_name", "simulate")
-
-    nda_checked = data.get("consent_nda", False)
-    terms_checked = data.get("consent_terms", False)
-
-    if not nda_checked or not terms_checked:
-        await callback.answer("Нужно отметить оба пункта перед продолжением.", show_alert=True)
-        return
-
-    await save_profile_field(user_id, "simulate_consent", "accepted")
-    await save_profile_field(user_id, "valuation_consent", "accepted")
-    await add_event(user_id, "tool_consent_accepted", tool_name)
-
-    await callback.message.delete()
-    await callback.message.answer(CONSENT_ACCEPTED_TEXT)
-    if tool_name == "simulate":
-        await send_simulate_mode_menu(callback, state)
-        return
-
-    if tool_name == "valuation":
-        await send_valuation_mode_menu(callback, state)
-        return
-
-    await state.clear()
-    await callback.message.answer(TOOL_PLACEHOLDER_TEXT, reply_markup=persistent_main_keyboard())
-    await callback.answer()
 
 
 @router.callback_query(F.data == "stub:book_meeting")
